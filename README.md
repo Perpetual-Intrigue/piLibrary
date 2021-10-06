@@ -1,6 +1,6 @@
 # About
 
-This library was primarily developed as a learning experience but may prove useful as a general purpose suite of librarieis usable in a variety of situations.
+This library was primarily developed as a learning experience but may prove useful as a general purpose suite of libraries usable in a variety of situations.
 
 ## Objective
 
