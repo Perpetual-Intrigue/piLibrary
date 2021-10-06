@@ -1,0 +1,90 @@
+{{
+================================================================================
+  Diagnostics Library
+  Part of the piLibrary ecosystem.
+  Written by DarkInsanePyro under Perpetual Intrigue (pi)
+
+  This library provides utility functions / tools that can help diaignose and
+  profile the user's application code or libraries.
+
+  Changelog:
+  10/06/2021    initial release
+================================================================================
+}}
+DAT
+stack_fill_pattern      byte $AA,$55,$A5,$5A
+
+
+
+PUB TLO()
+
+'' Top-Level Object Catch
+''
+'' This object is not designed to be top-level.
+
+  ABORT
+
+
+PUB StackPrepare(pointer, size) | byte pattern
+
+'' Prepares a stack buffer with a known byte pattern.
+''
+'' Arguments:
+''  pointer        pointer to the stack
+''  size           size of the stack, in bytes
+
+  pattern := pointer & %11
+
+  repeat while size-- > 0
+    byte[pointer++] := byte[@stack_fill_pattern][pattern]
+    pattern := (pattern + 1) +// 4
+
+
+PUB StackGetUnused(pointer, size) : unusedSize | byte pattern
+
+'' Returns the number of bytes not utilized.
+''
+'' Verifies the stack fill pattern from last-to-first and returns the
+'' number of bytes not manipulated.
+''
+'' Arguments:
+''  pointer        pointer to the stack
+''  size           size of the stack, in bytes
+''
+'' Returns:
+''  unusedSize     number of bytes matching the fill pattern
+
+  unusedSize := size
+  pattern := ((pointer & %11) + size - 1) +// 4
+
+  repeat while unusedSize > 1 and byte[pointer][unusedSize-1] == byte[@stack_fill_pattern][pattern]
+    unusedSize--
+    pattern := (pattern - 1) +// 4
+
+
+
+CON
+{{
+
+================================================================================
+  MIT License
+
+  Permission is hereby granted, free of charge, to any person obtaining a copy
+  of this software and associated documentation files (the "Software"), to deal
+  in the Software without restriction, including without limitation the rights
+  to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+  copies of the Software, and to permit persons to whom the Software is
+  furnished to do so, subject to the following conditions:
+
+  The above copyright notice and this permission notice shall be included in all
+  copies or substantial portions of the Software.
+
+  THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+  IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+  FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+  AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+  LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+  OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+  SOFTWARE.
+================================================================================
+}}

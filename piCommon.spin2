@@ -1,0 +1,149 @@
+{{
+================================================================================
+  Common Library
+  Part of the piLibrary ecosystem.
+  Written by DarkInsanePyro under Perpetual Intrigue (pi)
+
+  This library contains common functions and constants used throughout the
+  various libraries.
+
+  Changelog:
+  10/06/2021    initial release
+================================================================================
+}}
+CON
+  ' abort signals
+  #-1
+    ERROR_NONE
+    ERROR_UNSPECIFIED
+    ERROR_INVALIDCALL
+    ERROR_INVALIDARGUMENT
+    ERROR_NOTIMPLEMENTED
+
+    ERROR_CUSTOM
+
+  ' special timeout conditions
+  TIME_IMMEDIATE  = 0
+  TIME_INFINITE   = -1
+
+
+
+DAT
+strErrorNone            byte    "ERROR_NONE",0
+strErrorUnspecified     byte    "ERROR_UNSPECIFIED",0
+strErrorInvalidCall     byte    "ERROR_INVALIDCALL",0
+strErrorInvalidArgument byte    "ERROR_INVALIDARGUMENT",0
+strErrorNotImplemented  byte    "ERROR_NOTIMPLEMENTED",0
+
+strErrorUnrecognized    byte    "invalid/unrecognized error",0
+
+
+                        word    @strErrorNone
+strErrorTable           word    @strErrorUnspecified
+                        word    @strErrorInvalidCall
+                        word    @strErrorInvalidArgument
+                        word    @strErrorNotImplemented
+
+
+
+PUB TLO()
+
+'' Top-Level Object Catch
+''
+'' This object is not designed to be top-level.
+
+  ABORT
+
+
+PUB TimeoutToCounts(timeout) : counts
+
+''  Converts from  a timeout to clock counts while preserving special
+''  values like TIME_IMMEDIATE and TIME_INFINITE
+''
+'' Arguments:
+''  timeout        timeout, in milliseconds, to convert to clock cycles
+''
+'' Returns:
+''   counts        number of clock cycles for the timeout period
+
+  counts := timeout
+  if timeout <> TIME_IMMEDIATE and timeout <> TIME_INFINITE
+    counts *= clkfreq / 1_000
+
+
+PUB CountsToTimeout(counts) : timeout
+
+'' Converts from a clock count to a timeout, preserving special
+'' values like TIME_IMMEDIAITE and TIME_INFINITE
+'''
+'' Arguments:
+''  counts         counts, in clock cycles
+''
+'' Returns:
+''  timeout        timeout, in millseconds
+
+  timeout := counts
+  if counts <> TIME_IMMEDIATE and timeout <> TIME_INFINITE
+    counts /= clkfreq / 1_000
+
+
+PUB TimeoutToCT(timeout) : ct
+
+'' Converts from a timeout to system clock value that can be used
+'' with CTx events. Preserves TIME_INFINITE as a return value if provided.
+''
+'' Arguments:
+''  timeout        timeout, in millseconds
+''
+'' Returns:
+''  ct             next CT value that occurs after timeout elapses
+
+  ct := TimeoutToCounts(timeout)
+  if timeout <> TIME_INFINITE
+    ct += GETCT()
+
+
+PUB AbortToString(code) : str
+
+'' Provides a standardized string for library-defined abort codes.
+''
+'' Arguments:
+''  code         ABORT code, signaled from the library
+''
+'' Returns:
+''  str          null-terminated string briefly describing the abort code
+
+  ' return an unrecognized generic message if not a piLibrary error
+  if code < ERROR_NONE or code >= ERROR_CUSTOM
+    return @strErrorUnrecognized
+
+  ' return a pointer from the table of pointers of null-terminated code strings
+  str:= @@strErrorTable[code]
+
+
+
+CON
+{{
+
+================================================================================
+  MIT License
+
+  Permission is hereby granted, free of charge, to any person obtaining a copy
+  of this software and associated documentation files (the "Software"), to deal
+  in the Software without restriction, including without limitation the rights
+  to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+  copies of the Software, and to permit persons to whom the Software is
+  furnished to do so, subject to the following conditions:
+
+  The above copyright notice and this permission notice shall be included in all
+  copies or substantial portions of the Software.
+
+  THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+  IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+  FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+  AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+  LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+  OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+  SOFTWARE.
+================================================================================
+}}

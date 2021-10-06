@@ -1,0 +1,168 @@
+{{
+================================================================================
+  Terminal Usage Demo
+  Part of the piLibrary ecosystem.
+  Written by DarkInsanePyro under Perpetual Intrigue (pi)
+
+  This demonstrates the intended operation of the terminal library including
+  some example commands and argument parsing hanlded by the callback function.
+
+  Dependencies:
+  - piString
+  - piSerial
+  - piCommon
+  - piP2EvalBSP
+  - piDiagnostics
+  - piTerminal
+
+  Changelog:
+  10/06/2021    initial release
+================================================================================
+}}
+CON
+  _xtlfreq                      = 20_000_000
+  _clkfreq                      = 20_000_000
+
+  MAX_LINE_SIZE                 = 256
+
+  TERM_STACK_SIZE               = term.STACK_SIZE_BASELINE + 100
+  BLINK_STACK_SIZE              = 64
+
+
+
+OBJ
+  piString:     "piString"
+  piSerial:     "piInlineSerial"
+  piCommon:     "piCommon"
+  piDiag:       "piDiagnostics"
+
+  bsp:          "piP2EvalBSP"
+  term:         "piTerminal"
+
+
+
+VAR
+  BYTE commandBuffer[MAX_LINE_SIZE]
+
+  BYTE blinkStack[BLINK_STACK_SIZE]
+  BYTE blinkStack2[BLINK_STACK_SIZE]
+  BYTE termStack[term.STACK_SIZE_BASELINE]
+
+
+
+PUB Main() | count
+
+  piDiag.StackPrepare(@blinkStack, BLINK_STACK_SIZE)
+  piDiag.StackPrepare(@termStack, TERM_STACK_SIZE)
+
+  cogspin(NEWCOG, Blink(bsp.LED_8, 2), @blinkStack)
+  cogspin(NEWCOG, Blink(bsp.LED_4, 1), @blinkStack2)
+
+  'term.Run(9600, 0, 1, piSerial.DEFAULT_CONFIG, @CommandHandler, @commandBuffer, MAX_LINE_SIZE)
+  ' OR
+  term.Start(9600, 0, 1, piSerial.PARITY_EVEN, @CommandHandler, @commandBuffer, MAX_LINE_SIZE, @termStack)
+
+
+PRI CommandHandler(status, buffer) | tok
+
+  ' no need to process canceled (most likely imcomplete) input
+  if status == term.COMMAND_CANCELED
+    return
+
+  tok := piString.NextToken(@buffer)
+  piString.Lower(tok)
+  if tok == 0
+    return
+
+  if strcomp(tok, string("help")) == -1
+    send(string("commands: help, cogs, stop, stack",piString.CR,piString.LF))
+  elseif strcomp(tok, string("cogs")) == -1
+    Command_Cogs()
+  elseif strcomp(tok, string("stop")) == -1
+    Command_Stop(buffer)
+  elseif strcomp(tok, string("stack")) == -1
+    Command_Stack()
+  else
+    send(string("unrecognized command", piString.CR, piString.LF))
+
+
+PRI Command_Cogs() | idx
+  piString.SendFormat_1(string("Active Cog = %d", piString.CR, piString.LF), cogid())
+
+  repeat idx from 0 to 7
+    piString.SendFormat_1(string("%d "), idx)
+  send(string(piString.CR,piString.LF))
+
+  repeat idx from 0 to 7
+    piString.SendFormat_1(string("%d "), cogchk(idx) & 1)
+  send(string(piString.CR,piString.LF))
+
+
+PRI Command_Stop(buffer) | id, tok
+
+  ' get the token that holds the id
+  tok := piString.NextToken(@buffer)
+  if tok == 0
+    send(string("missing argument: id",piString.CR,piString.LF))
+    return
+
+  ' convert the token to integer
+  id := piString.ToInt(tok)
+  if id < 0 or id > 7
+    piString.SendFormat_1(string("invalid cog id: %d",piString.CR,piString.LF), id)
+    return
+
+  ' stop the selected cog
+  piString.SendFormat_1(string("stopping cog %d!",piString.CR,piString.LF), id)
+  cogstop(id)
+
+
+
+PRI Command_Stack() | cnt
+
+  ' write stack usage for the terminal cog
+  cnt := piDiag.StackGetUnused(@termStack, TERM_STACK_SIZE)
+  piString.SendFormat_1(string("Terminal Stack Used = %d bytes", piString.CR, piString.LF), cnt)
+
+  ' write stack usage for the blink cog
+  cnt := piDiag.StackGetUnused(@blinkStack, BLINK_STACK_SIZE)
+  piString.SendFormat_1(string("Blink Stack Used = %d bytes", piString.CR, piString.LF), cnt)
+
+
+PRI Blink(pin, rate) | delay
+
+  delay := 500 / rate
+
+  repeat
+    pinh(pin)
+    waitms(delay)
+    pinl(pin)
+    waitms(delay)
+
+
+
+CON
+{{
+
+================================================================================
+  MIT License                 hj
+
+  Permission is hereby granted, free of charge, to any person obtaining a copy
+  of this software and associated documentation files (the "Software"), to deal
+  in the Software without restriction, including without limitation the rights
+  to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+  copies of the Software, and to permit persons to whom the Software is
+  furnished to do so, subject to the following conditions:
+
+  The above copyright notice and this permission notice shall be included in all
+  copies or substantial portions of the Software.
+
+  THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+  IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+  FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+  AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+  LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+  OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+  SOFTWARE.
+================================================================================
+}}

@@ -1,0 +1,196 @@
+{{
+================================================================================
+  Inline Serial Usage Demo
+  Part of the piLibrary ecosystem.
+  Written by DarkInsanePyro under Perpetual Intrigue (pi)
+
+  This demonstrates the intended operation of the inline serial library
+  that provides asyncronous serial communications in the background of a cog
+  running Spin2 code. It also illustrates the various error detection flags
+  available.
+
+  Dependencies:
+  - piSerial
+
+  Changelog:
+  10/06/2021    initial release
+================================================================================
+}}
+CON
+  _xtlfreq                      = 20_000_000
+  _clkfreq                      = 20_000_000
+
+  TEST_BAUDRATE                 = 115200
+  TEST_PIN_RX                   = 1
+  TEST_PIN_TX                   = 0
+
+  MAX_MESSAGE_SIZE              = 512
+  SMALL_MESSAGE_SIZE            = 55
+
+
+OBJ
+  serial:       "piInlineSerial"
+
+
+DAT
+              org
+message       word "Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua."
+              word " Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat. Waffle cakes iron"
+              word " Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur."
+              word " Excepteur sint occaecat cupidatat non proident, sunt in culpa qui officia deserunt mollit anim id est laborum.", 0
+
+
+VAR
+  byte recvBuffer[MAX_MESSAGE_SIZE]
+
+
+PUB Main() | rnd
+
+  RunDemo()
+
+
+PRI RunDemo() | testIndex, random, offset, bit, messageSize, largeMessageSize
+
+  messageSize := 33
+  random := messageSize         ' not really random but this is only a demo
+  testIndex := 0
+  offset := -1
+  largeMessageSize := GetSampleDataSize()
+
+
+  BuildSampleData()
+  InitTransmit()
+  InitReceive()
+
+
+  repeat
+    ??random
+
+    ' use long messages for test index #3
+    messageSize := (testIndex == 3) ? largeMessageSize : SMALL_MESSAGE_SIZE
+
+    ' corrupt a random bit (data or parity) for test index #1
+    if (testIndex == 1)
+      offset := ??random +// messageSize
+      bit := ??random +// 9
+      word[@message][offset].[bit] ^= 1
+
+    ' corrupt the 1st stop bit for test index #2
+    elseif (testIndex == 2)
+      offset := ??random +// messageSize
+      bit := 9
+      word[@message][offset].[bit] ^= 1
+
+    ' send the message
+    WriteSampleData(messageSize)
+    waitms(500)
+
+    ' receive and print / indicate error
+    ' this can occur on the same cog since the inline serial driver can buffer the data
+    ReceiveSampleData(testIndex)
+
+    ' uncorrupt the test data (if corrupted before)
+    if offset <> -1
+      word[@message][offset].[bit] ^= 1
+      offset := -1
+
+    testIndex := (testIndex + 1) +// 4
+
+
+PRI BuildSampleData() | word data, offset
+
+  offset := 0
+
+  repeat
+    ' pull next symbol, break if null terminating character
+    data := word[@message][offset] & $FF
+
+    ' create stop and parity bits
+    data |= (((ONES data) & %1) << 8) | $FE00
+
+    ' update sample data in place
+    word[@message][offset++] := data
+
+  until data & $FF == 0
+
+
+PRI InitTransmit() | spX
+
+  spX := muldiv64(clkfreq, $1_0000, TEST_BAUDRATE) & $FFFFFC00 | (10 - 1)
+  PINSTART(TEST_PIN_TX, P_ASYNC_TX | P_OE, spX, 0)
+
+
+PRI WriteSampleData(count) | word data, offset
+
+  offset := 0
+
+  ' wait for the smartpin is idle
+  repeat while rdpin(TEST_PIN_TX) & $8000_0000
+
+  repeat
+    ' pull next symbol, break if null terminating character
+    data := word[@message][offset++]
+
+    ' write data to smartpin
+    wypin(TEST_PIN_TX, data)
+
+    ' wait until the pin's buffer register is free
+    repeat until pinread(TEST_PIN_TX)
+
+    if count > 0
+      count--
+
+  until (count == -1 and data & $FF == 0) or (count == 0)
+
+
+PRI InitReceive()
+
+  ' start the serial driver with receive only with 8E1 (8-bit, even, 1-stop)
+  serial.Start(TEST_BAUDRATE, -2, TEST_PIN_RX, serial.PARITY_EVEN | serial.STOPBITS_2)
+
+
+PRI ReceiveSampleData(testIndex) | size, status, byte framing, byte parity, byte overflow
+
+  size := serial.Read(@recvBuffer, MAX_MESSAGE_SIZE, 100)
+  status := serial.GetStatus()
+
+  framing := (status >> serial.RX_FRAMING_ERROR_POS) & %1
+  parity := (status >> serial.RX_PARITY_ERROR_POS) & %1
+  overflow := (status >> serial.RX_OVERFLOW_ERROR_POS) & %1
+
+  debug(udec(testIndex), udec(framing), udec(parity), udec(overflow), lstr(@recvBuffer, size <# 64))
+
+
+PRI GetSampleDataSize() : size
+
+  size := 0
+  repeat until word[@message][size++] == 0
+  size--
+
+
+
+CON
+{{
+
+================================================================================
+  MIT License                 hj
+
+  Permission is hereby granted, free of charge, to any person obtaining a copy
+  of this software and associated documentation files (the "Software"), to deal
+  in the Software without restriction, including without limitation the rights
+  to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+  copies of the Software, and to permit persons to whom the Software is
+  furnished to do so, subject to the following conditions:
+
+  The above copyright notice and this permission notice shall be included in all
+  copies or substantial portions of the Software.
+
+  THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+  IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+  FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+  AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+  LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+  OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+  SOFTWARE.
+================================================================================
+}}

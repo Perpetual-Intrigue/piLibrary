@@ -1,0 +1,427 @@
+{{
+================================================================================
+  String Formatting and Parsing Library
+  Part of the piLibrary ecosystem.
+  Written by DarkInsanePyro under Perpetual Intrigue (pi)
+
+  This library provides string formatting and parsing functions that can be
+  used throughout piLibrary libraries or used in conjunction with other external
+  libraries.
+
+  Dependencies:
+  - piCommon
+
+  Changelog:
+  10/06/2021    initial release
+================================================================================
+}}
+CON
+  ' special control characters (pulled from www.AsciiTable.com)
+  #$00
+  '     $_0  $_1  $_2  $_3  $_4  $_5  $_6  $_7  $_8  $_9  $_A  $_B  $_C  $_D  $_E  $_F
+        NUL, SOH, STX, ETX, EOT, ENQ, ACK, BEL, BS,  TAB, LF,  VT,  FF,  CR,  SO,  SI   ' $0_
+        DLE, DC1, DC2, DC3, DC4, NAK, SYN, ETM, CAN, EM, SUBT, ESC, FS,  GS,  RS,  US   ' $1_
+
+  ' other common constants
+  SPACE         = " "
+  DEL           = $7F
+
+  ' bit positions of the flags
+  #0
+        CASE_POS
+        SIGNEDNESS_POS
+
+  ' bit masks for each flag
+  CASE_MSK                     = %1 << CASE_POS
+  SIGNEDNESS_MSK               = %1 << SIGNEDNESS_POS
+
+  ' value masks for each case option
+  CASE_LOWER                    = 0 << CASE_POS
+  CASE_UPPER                    = 1 << CASE_POS
+
+  ' value masks for each signedness option
+  SIGNEDNESS_SIGNED             = 0 << SIGNEDNESS_POS
+  SIGNEDNESS_UNSIGNED           = 1 << SIGNEDNESS_POS
+
+
+
+OBJ
+  piCommon      : "piCommon"
+
+
+
+DAT
+  base_enc_hi           byte "0123456789ABCDEF"
+  base_enc_lo           byte "0123456789abcdef"
+
+
+
+PUB TLO()
+
+'' Top-Level Object Catch
+''
+'' This object is not designed to be top-level.
+
+  ABORT
+
+
+PUB SendInt(value, radix, padSize, padChar, flags) | byte isneg, byte buff[33], byte pos, tablePtr
+
+'' Writes a formatted integer value to the send callback with a null terminated
+'' string. Supports various radix values and enables padding, case, and signed options.
+''
+'' Arguments:
+''  value          integer value to be formatted
+''  radix          value's base to be printed as; 2 to 16 allowed
+''  padSize        number of padding characters, excluding sign
+''  padChar        padding ascii character to be printed to pad the value
+''  flags          various options to alter the formatting:
+''                 SIGNEDNESS_*, CASE_*
+
+  buff[32] := 0
+  pos := 32
+
+  ' select encoding tables depending on case flag
+  if (flags & CASE_MSK) == CASE_UPPER
+    tablePtr := @base_enc_hi
+  else
+    tablePtr := @base_enc_lo
+
+  ' remove negative if the value is to be interpreted as signed
+  if value < 0 and (flags & SIGNEDNESS_MSK) ==  SIGNEDNESS_SIGNED
+    isneg := 1
+    value := -value
+  else
+    isneg := 0
+
+  ' write each ascii digit to the buffer in reverse (last first)
+  repeat
+    buff[--pos] := byte[tablePtr][(value +// radix)]
+    value +/= radix
+  until value == 0
+
+  ' pad up to the requested number of characters (32 maximum)
+  repeat while (32 - pos) < padSize
+    buff[--pos] := padChar
+
+  ' add a negative sign if signed and negative
+  if (isneg > 0)
+    buff[--pos] := "-"
+
+  send(@buff+pos)
+
+
+PUB SendStr(ptr)
+
+'' Writes an unformatted string to the send callback. This is mainly indended
+'' as a wrapper in case internal architecture changes.
+''
+'' Arguments:
+''  ptr            null-terminated string to be written using 'send'
+
+  send(ptr)
+
+
+PUB SendFormat(str, argsptr) | byte chr, byte null, byte argpos, offset, byte padChar, byte padSize
+
+'' Writes a formatted string to the send callback. Arguments are provided by a pointer
+'' to a contiguous set of longs in memory to be used as a dynamic number of arguments.
+''
+'' Arguments:
+''  str            string with optional formatting codes
+''  argsptr        pointer to a contiguous list of longs to be used for each of the format specifiers
+
+  argpos := 0
+  null := 0
+  offset := 0
+
+  repeat
+
+    chr := byte[str][offset]
+    if chr ==  0
+      quit
+
+    if chr == "%"
+      ' send any text that occured before this point by null
+      ' terminating in place and undoing afterwords
+      byte[str][offset] := 0
+      send(str)
+      byte[str][offset] := "%"
+      str += offset
+      offset := 0
+
+      chr := byte[++str]
+      padChar := " "
+      padSize := 0
+
+      ' parse the flags field
+      repeat
+        case chr
+          "-": ABORT piCommon.ERROR_NOTIMPLEMENTED
+          "+": ABORT piCommon.ERROR_NOTIMPLEMENTED
+          " ": ABORT piCommon.ERROR_NOTIMPLEMENTED
+          "#": ABORT piCommon.ERROR_NOTIMPLEMENTED
+          "0": padChar := "0"
+          other: quit
+        chr := byte[++str]
+
+      ' parse the width field
+      repeat while chr >= "0" and chr <= "9"
+        padSize := padSize * 10 + (chr - "0")
+        chr := byte[++str]
+
+      ' get the format specifier and execute accordingly
+      ++str
+      case_fast chr
+        ' escaped character
+        "%":      SendStr(@chr)
+
+        ' standard format specifiers
+        "d","i":  SendInt(long[argsptr][argpos++], 10, padSize, padChar, SIGNEDNESS_SIGNED)
+        "u":      SendInt(long[argsptr][argpos++], 10, padSize, padChar, SIGNEDNESS_UNSIGNED)
+        "o":      SendInt(long[argsptr][argpos++], 8,  padSize, padChar, SIGNEDNESS_UNSIGNED)
+        "x":      SendInt(long[argsptr][argpos++], 16, padSize, padChar, SIGNEDNESS_UNSIGNED | CASE_LOWER)
+        "X":      SendInt(long[argsptr][argpos++], 16, padSize, padChar, SIGNEDNESS_UNSIGNED | CASE_UPPER)
+        "s":      SendStr(long[argsptr][argpos++])
+
+        ' custom format specifiers
+        "b":      SendInt(long[argsptr][argpos++], 2,  padSize, padChar, SIGNEDNESS_UNSIGNED)
+
+        ' unsupported format specifiers
+        "f", "F", "e","E","g","G","a","A","p","n":
+          ABORT piCommon.ERROR_NOTIMPLEMENTED
+
+        ' anything else that isn't handled
+        other:
+          ABORT piCommon.ERROR_INVALIDARGUMENT
+
+    else
+      offset++
+
+  send(str)
+
+
+PUB SendFormat_1(str, arg1)
+
+'' Send's a formatted string with one argument. See SendFormat for formatting details.
+''
+'' Arguments:
+''  str            string to be printed with optional specifiers
+''  arg1           argument for the optional specifiers
+
+  SendFormat(str, @arg1)
+
+
+PUB SendFormat_2(str, arg1, arg2)
+
+'' Send's a formatted string with two arguments. See SendFormat for formatting details.
+''
+'' Arguments:
+''  str            string to be printed with optional specifiers
+''  arg1...2       arguments for the optional specifiers
+
+  SendFormat(str, @arg1)
+
+
+PUB SendFormat_3(str, arg1, arg2, arg3)
+
+'' Send's a formatted string with three arguments. See SendFormat for formatting details.
+''
+'' Arguments:
+''  str            string to be printed with optional specifiers
+''  arg1...3       arguments for the optional specifiers
+
+  SendFormat(str, @arg1)
+
+
+PUB SendFormat_4(str, arg1, arg2, arg3, arg4)
+
+'' Send's a formatted string with four arguments. See SendFormat for formatting details.
+''
+'' Arguments:
+''  str            string to be printed with optional specifiers
+''  arg1...4       arguments for the optional specifiers
+
+  SendFormat(str, @arg1)
+
+
+
+PUB Upper(str) | c
+
+'' Converts all letters in a string to uppercase in place.
+''
+'' Arguments:
+''  str            pointer to the string to be modified
+
+  repeat
+    c := byte[str]
+    if c == 0
+      quit
+    if c >= "a" and c <= "z"
+      c += "A" - "a"
+    str++
+
+
+PUB Lower(str) | c
+
+'' Converts all letters in a string to lowercase in place.
+''
+'' Arguments:
+''  str            pointer to the string to be modified
+
+  repeat
+    c := byte[str]
+    if c == 0
+      quit
+    if c >= "A" and c <= "Z"
+      c -= "A" - "a"
+    str++
+
+
+PUB Insert(str, pos, substr) | baseSize, subSize, n
+
+'' Inserts a substring into a specified position of the mains string,
+'' shifting the characters after the insertion point over.
+''
+'' Arguments:
+''  str            pointer to a null-terminated string to be inserted into (modified)
+''  pos            position in the string to perform the insert, starting at 0
+''  substr         pointer to a null-terminated string to be inserted from
+
+  ' determine the length of the strings
+  baseSize := strsize(str)
+  subSize := strsize(substr)
+  'debug(udec(baseSize), udec(subSize))
+
+  ' don't copy if 'pos' is past the base string's null-terminator
+  if pos > baseSize
+    ABORT piCommon.ERROR_INVALIDARGUMENT
+
+  ' shift the data after 'pos' over by substring's length
+  if pos < baseSize
+    repeat n from baseSize-1 to pos
+      byte[str][n+subSize] := byte[str][n]
+
+  ' copy the substring into the main string
+  bytemove(str+pos, substr, subSize)
+
+
+PUB NextToken(ptr) : tokptr | curptr, byte chr
+
+'' Provides the next token within a null-terminated string with a delimiter of
+'' space or tab. Ignores excess whitespace and supports quotes to allow whitespace
+'' within a token. The string being tokenized will be modified with null characters
+'' as the tokenization occurs.
+''
+'' Arguments:
+''  ptr            pointer to a pointer of a string; string pointer is automatically shifted after
+''                 a token provided to point to the next token
+''
+'' Returns:
+''  tokptr         pointer to the start of the next null-terminated token
+
+  curptr := long[ptr]
+
+  ' skip whitespace
+  repeat
+    chr := byte[curptr]
+    if chr <> " " and chr <> $09
+      quit
+    curptr++
+
+  ' record start of tokenl, indicate no tokens left if
+  ' there will be no characters left for this token
+  tokptr := curptr
+  if byte[tokptr] == 0
+    tokptr := 0
+    return
+
+  ' delimiter is quote if starting with quote
+  if byte[curptr] == $22
+    tokptr++                                            ' skip initial quote
+    repeat
+      curptr++
+    until byte[curptr] == $22 or byte[curptr] == 0
+    if byte[curptr] <> 0
+      byte[curptr] := 0
+      curptr++
+    else
+      byte[curptr] := 0
+    long[ptr] := curptr
+    return
+
+  ' normal delimiter, space, tab, EOL
+  repeat
+    chr := byte[curptr]
+    if chr == 0 or chr == SPACE or chr == TAB
+      if byte[curptr] <> 0
+        byte[curptr] := 0
+        curptr++
+      else
+        byte[curptr] := 0
+      long[ptr] := curptr
+      return
+    curptr++
+
+
+PUB ToInt(ptr) : value | byte isneg, byte chr
+
+'' Converts a string to integer, similar to atoi.
+''
+'' Arguments:
+''  ptr            string to be converted to integer
+''
+'' Returns:
+''  value          integer value based on provided string
+
+  ' don't try to convert a null pointer
+  if ptr == 0
+    ABORT piCommon.ERROR_INVALIDARGUMENT
+
+  ' check if the value is negative
+  if byte[ptr] == "-"
+    isneg := 1
+    ptr++
+  else
+    isneg := 0
+
+  ' convert the value to integer, one character at a time
+  repeat while (chr := byte[ptr++]) <> 0
+    ' catch if there is a non-digit provided
+    if chr < "0" or chr > "9"
+      ABORT piCommon.ERROR_INVALIDARGUMENT
+
+    ' add the digit to the value
+    value := value * 10 + (chr - "0")
+
+  ' convert to negative... if negative
+  if isneg
+    value := -value
+
+
+
+CON
+{{
+
+================================================================================
+  MIT License
+
+  Permission is hereby granted, free of charge, to any person obtaining a copy
+  of this software and associated documentation files (the "Software"), to deal
+  in the Software without restriction, including without limitation the rights
+  to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+  copies of the Software, and to permit persons to whom the Software is
+  furnished to do so, subject to the following conditions:
+
+  The above copyright notice and this permission notice shall be included in all
+  copies or substantial portions of the Software.
+
+  THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+  IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+  FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+  AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+  LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+  OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+  SOFTWARE.
+================================================================================
+}}

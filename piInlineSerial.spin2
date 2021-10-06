@@ -1,0 +1,680 @@
+{{
+================================================================================
+  Inline Asyncronous Serial Service Library
+  Part of the piLibrary ecosystem.
+  Written by DarkInsanePyro under Perpetual Intrigue (pi)
+
+  This library is designed to provide asyncronous serial communications in the
+  backgrounds concurrently while Spin2 code is executed. Data is sent and
+  received to cog register memory until Spin2 api calls are issued to add more
+  data to transmit or pull data received.
+
+  The library relies on embedded PASM2 code running concurrently and is called
+  using interrupts. This requires the user's Spin2 code not to execute inline
+  assembly as thish will overwrite important
+
+  Dependencies:
+  - piCommon
+
+  Changelog:
+  10/06/2021    initial release
+================================================================================
+}}
+{
+TODO:
+- Restart (change baudrate)
+- Flush (wait until tx buffer is empty)
+- Parameter range checks?
+- Optimize register use (maybe, some unallocated PRx... reserve them for later?)
+  - service_config in a register would optimize GetStatus Spin2 api
+- Add Spin2 method to get assembly's service_config register; mainly for error reporting
+  - Hacked in, does it need cleaned up?
+- TXEN implementation
+  - will need a timeout from last byte written...
+- ReadLine, break on \r or \n? Prop Tool didn't work originally
+}
+CON
+  ' config field map
+  ' rrrrrrrr_tttttttt_ssssssss_cccccccc
+  ' r = rx pin
+  ' t = tx pin
+  ' b = status / config bitfield
+
+  ' bit field list for control and status flags
+  #0
+    ' config bitmap
+    TX_ENABLE_POS
+    RX_ENABLE_POS
+    PARITY_POS[2]
+    STOPBITS_POS
+    RX_OVERFLOW_MODE_POS
+
+    ' status bitmap
+    RX_FRAMING_ERROR_POS
+    RX_PARITY_ERROR_POS
+    RX_OVERFLOW_ERROR_POS
+
+  TX_PIN_POS                    = 16
+  RX_PIN_POS                    = 24
+
+  ' flag mask constants
+  TX_ENABLE_MSK                 = %1  << TX_ENABLE_POS
+  RX_ENABLE_MSK                 = %1  << RX_ENABLE_POS
+  STOPBITS_MSK                  = %1  << STOPBITS_POS
+  PARITY_MSK                    = %11 << PARITY_POS
+
+  ' parity enum
+  PARITY_NONE                   = %00 << PARITY_POS
+  PARITY_EVEN                   = %01 << PARITY_POS
+  PARITY_ODD                    = %11 << PARITY_POS
+
+  ' stop bits enum
+  STOPBITS_1                    = %0 << STOPBITS_POS
+  STOPBITS_2                    = %1 << STOPBITS_POS
+
+  DEFAULT_CONFIG                = 0
+
+  ' rx overflow behavior
+  RX_OVERFLOW_DROP              = %0 << RX_OVERFLOW_MODE_POS
+  RX_OVERFLOW_OVERWRITE         = %1 << RX_OVERFLOW_MODE_POS
+
+  RX_FRAMING_ERROR              = %1 << RX_FRAMING_ERROR_POS
+  RX_PARITY_ERROR               = %1 << RX_PARITY_ERROR_POS
+  RX_OVERFLOW_ERROR             = %1 << RX_OVERFLOW_ERROR_POS
+
+  SETTINGS_MASK                 = $FFFF
+  FLAGS_MASK                    = RX_FRAMING_ERROR | RX_PARITY_ERROR | RX_OVERFLOW_ERROR
+
+  _USER_SPACE_END                = $124
+
+
+
+OBJ
+  piCommon      : "piCommon"
+
+
+
+VAR
+  LONG settings
+
+
+
+PUB TLO()
+
+'' Top-Level Object Catch
+''
+'' This object is not designed to be top-level.
+
+  ABORT
+
+
+PUB Start(baudrate, txPin, rxPin, config) | spx, bits
+
+'' Start inline serial driver.
+''
+'' Arguments:
+''   baudrate bitrate for the asynchronous serial data should be sent at, in bits-per-second
+''   txpin    smart pin for transmitting on, -1 for disabled
+''   rxpin    smart pin for receiving on, -1 for disabled
+''   config   a bitmask of settings available to change the specifics of the communication
+''            stop bits: STOPBITS_1 (default), STOPBITS_2
+''            parity:    PARITY_NONE (default), PARITY_EVEN, PARITY_ODD
+''
+'' Returns:
+''   none
+''
+'' Warning: the cog that has this driver started must not use inline assembly or any
+'' regload/regexec calls as long as this driver is running.
+
+  ' break out early if we aren't enabling any serial functionality
+  if txPin < 0 and rxPin < 0
+    return
+
+  ' determine number of bits to be transfered, minus one
+  bits := 8
+  if (config & STOPBITS_MSK) == STOPBITS_2
+    bits++
+  if (config & PARITY_MSK) <> PARITY_NONE
+    bits++
+
+  ' reset settings memory and pre-calculate smartpin x register
+  settings := config & $FFFF
+  spx := muldiv64(clkfreq, $1_0000, baudrate) & $FFFFFC00 | (bits - 1)
+
+  ' check if a tx pin is selected and if so save the information and configure the smart pin
+  if txPin >= 0
+    settings |= TX_ENABLE_MSK | ((txPin & $FF) << TX_PIN_POS)
+    PINSTART(txpin, P_ASYNC_TX | P_OE, spx, 0)
+
+  ' check if an rx pin is selected and if so save the information and configure the smart pin
+  if rxPin >= 0
+    settings |= RX_ENABLE_MSK | ((rxPin & $FF) << RX_PIN_POS)
+    PINSTART(rxpin, P_ASYNC_RX, spx, 0)
+
+  ' load and start the assembly code in the spin cog's top memory ($000 - $12F) and initialize low-level code
+  PR7 := settings
+
+  PR0 := clkfreq / 1000
+  PR1 := txpin
+  PR2 := rxpin
+  regexec(@service)
+
+
+PUB Stop() | pin
+
+'' Stop inline serial driver, disables smartpins, and sets tx to hi-z.
+''
+'' Once called the object must be reinitialized with Start. The cog's user-space assembly can be
+'' loaded with other code or inline assembly can be used within Spin2 code.
+
+  ' skip if we aren't running
+  if settings == 0
+    return
+
+  ' disable transmit pin if enabled
+  pin := settings >> TX_PIN_POS SIGNX 7
+  if pin >= 0
+    PINCLEAR(pin)
+
+  ' disable receive pin if enabled
+  pin := settings >> RX_PIN_POS SIGNX 7
+  if pin >= 0
+    PINCLEAR(pin)
+
+  ' call low-level stop code
+  call(#service_stop)
+  settings := 0
+
+
+PUB GetStatus() : status
+
+'' Returns the current state of the status flags. The flags are automatically cleared
+'' after this function is called.
+''
+'' Returns:
+''  status       a bitmask of flags indicating errors and other information
+
+  call(#get_status)
+  status := PR0
+
+
+PUB Write(ptr, size, timeout) : actsize | tocnt
+
+'' Writes data to the transmit buffer, returning early if the timeout condition is met.
+''
+'' Arguments:
+''   ptr      pointer to memory
+''   size     amount of data to be written
+''   timeout  time, in milliseconds, allowed to block for until returning
+''            also accepts piCommon.TIME_IMMEDIATE and piCommon.TIME_INFINITE
+''
+'' Returns:
+''   number of bytes actually written
+
+  PR0 := ptr
+  PR1 := size
+  PR2 := piCommon.TimeoutToCT(timeout)
+  call(#write_asm)
+  actsize := size - PR1
+
+
+PUB Read(ptr, size, timeout) : actsize | tocnt
+
+'' Reads data from the receive buffer, returning early if the timeout condition is met.
+''
+'' Arguments
+''   ptr      pointer to memory
+''   size     amount of data to be read
+''   timeout  time, in milliseconds, allowed to block for until returning
+''            also accepts piCommon.TIME_IMMEDIATE and piCommon.TIME_INFINITE
+''
+'' Returns:
+''   number of bytes actually read
+
+  PR0 := ptr
+  PR1 := size
+  PR2 := piCommon.TimeoutToCT(timeout)
+  call(#read_asm)
+  actsize := size - PR1
+
+
+PUB ReadLine(ptr, size, timeout) : actualSize, complete | byte chr, n, ct
+
+'' Reads a line of text from the receive buffer.
+''
+'' Text will be read from the serial port until either a newline character is received or
+'' the timeout period is reached. If a timeout occurs, complete will be FALSE indicating
+'' an incomplete line was received. Note that this does not PEEK at the receive buffer. The
+'' buffer will always be a null-terminated string, complete or not.
+''
+'' Arguments:
+''  ptr            pointer to a receive buffer to read the line of text into
+''  size           maximum receive size to be written into the buffer
+''  timeout        time, in milliseconds, allowed to block for until returning
+''                 also accepts piCommon.TIME_IMMEDIATE and piCommon.TIME_INFINITE
+''
+'' Returns:
+''  actualSize     the number of bytes received, excluding the newline characters
+
+  complete := FALSE
+
+  ' validate arguments
+  if size <= 0
+    return
+
+  ct := piCommon.TimeoutToCT(timeout)
+
+  ' read a line of text from the serial port
+  repeat until size <= 1
+
+    n := ReadUntil(@chr, 1, ct)
+
+    if n == 0
+      quit
+
+    case chr
+      $0A:
+      $0D:
+        complete := TRUE
+        quit
+      other: byte[ptr++] := chr
+
+    actualSize++
+    size--
+
+  ' make sure the string is null terminated
+  byte[ptr] := 0
+
+
+PUB ReadUntil(ptr, size, ct) : actsize
+
+'' Reads data from the receive buffer, returning early if system counter elapses ct
+''
+'' Arguments
+''   ptr      pointer to memory
+''   size     amount of data to be read
+''   ct       system counter timeout time, also accepting piCommon.TIME_INFINITE
+''
+'' Returns:
+''   number of bytes actually read
+
+  PR0 := ptr
+  PR1 := size
+  PR2 := ct
+  call(#read_asm)
+  actsize := size - PR1
+
+
+
+DAT
+service                 word      service_begin, service_end-service_begin-1
+                        org
+
+
+'------------------------------
+' service_begin
+'       start address of assembly instructions and setup call
+' to enable interrupts and initialize buffers
+'
+' Arguments
+' PR0   p_svc_clkmilli          number of clocks per millisecond (calculation offloaded to spin for convenience)
+' PR1   p_srv_tx_pin            transmit pin (ignored if TX_ENABLE_MSK isn't set)
+' PR2   p_srv_rx_pin            receive pin (ignored if RX_ENABLE_MSK isn't set)
+'
+' Returns
+' PR0   p_svc_clkmilli          (clobbered)
+'------------------------------
+                        ' copy parameters to memory
+service_begin           mov clk_milli, p_svc_clkmilli
+                        mov service_tx_pin, p_srv_tx_pin
+                        mov service_rx_pin, p_srv_rx_pin
+
+                        ' configure tx and rx circular buffer indicies
+                        mov tx_wr_index, #0
+                        mov tx_rd_index, #0
+                        mov rx_wr_index, #0
+                        mov rx_rd_index, #0
+
+                        ' enable interrupt 1 for IN high for rx smartpin (rx data available)
+                        ' Note: rx is given a higher priority interrupt to reduce chance of lost data
+                        testb service_config, #RX_ENABLE_POS wz
+              if_nz     skipf #%11111
+                        mov IJMP1, #rx_isr
+                        mov PR0, service_rx_pin
+                        or PR0, #%110_000000
+                        setse1 PR0
+                        setint1 #EVENT_SE1
+
+                        ' enable interrupt 2 for IN rising high for tx pin (tx buffer free)
+                        testb service_config, #TX_ENABLE_POS wz
+              if_nz     skipf #%11111
+                        mov IJMP2, #tx_isr
+                        mov PR0, service_tx_pin
+                        or PR0, #%001_000000
+                        setse2 PR0
+                        setint2 #EVENT_SE2
+
+                        ret
+
+
+'------------------------------
+' service_stop
+'       stops the serial service by disabling interrupts and leaving everything
+' in a safe state to be overridden. all buffers will be inaccessable once the service
+' is stopped'
+'------------------------------
+                        ' disable interrupts
+service_stop            setint1 #INT_OFF
+              _ret_     setint2 #INT_OFF
+
+
+'------------------------------
+' get_status
+'       reads the status register and clears any status flags that may be set.
+'
+' Returns:
+' PR0   p_gs_status     current status and configuration
+'------------------------------
+                        ' copy status and clear flags, occurs in critical section since
+                        ' interrupts can change the flag inbetween instructions
+get_status              stalli
+                        mov p_gs_status, service_config
+                        andn service_config, #FLAGS_MASK
+              _ret_     allowi
+
+
+'------------------------------
+' write_asm
+'       writes data to the transmit circular buffer
+' blocking until all data is sent or timeout condition
+' is met
+'
+' Arguments
+' PR0   p_wr_ptr        pointer to data
+' PR1   p_wr_size       number of bytes to transmit, -1 to stop on null byte ($00)
+' PR2   p_wr_timeout    timeout, in milliseconds, or TIME_IMMEDIATE / TIME_INFINITE
+'
+' Returns
+' PR0   p_wr_ptr        pointer to last byte sent + 1
+' PR1   p_wr_size       remaining bytes to be sent
+' PR2   p_wr_timeout    (clobbered)
+' PR3   p_wr_scratch    (clobbered)
+' PR4   p_wr_data       (clobbered)
+'
+' Hardware:
+' CT1
+'------------------------------
+                        ' set CT1 to timeout when timeout period elapsed
+write_asm               add p_wr_timeout, #1
+                        addct1 p_wr_timeout, #0
+
+                        ' check if there is any data remaining
+.next_byte              tjz p_wr_size, #.done
+
+                        ' read the next byte, if null and break-on-null (size=-1) then exit
+                        rdbyte p_wr_data, p_wr_ptr
+                        cmp p_wr_data, #0 wz
+              if_z      tjf p_wr_size, #.done
+
+                        ' check if there is any space left in the circular buffer
+                        ' if ((tx_wr_index + 1) % BUFFER_SIZE == tx_rd_index)
+.busy                   mov p_wr_scratch, tx_wr_index
+                        incmod p_wr_scratch, #((tx_buffer_end-tx_buffer)*4-1)
+                        cmp p_wr_scratch, tx_rd_index wz
+              if_nz     jmp #.ready
+
+                        ' make sure the smartpin is actually sending data; this write loop can take either
+                        ' shorter or longer than a byte of data depending baudrate and clock frequency
+                        rqpin p_wr_scratch, service_tx_pin wc
+              if_nc     trgint2
+
+                        ' check if we've timed out, bail out of so
+                        cmp p_wr_timeout, #0 wz
+              if_nz     jct1 #.done
+
+                        jmp #.busy
+
+                        ' write the byte to the circular buffer
+.ready                  altsb tx_wr_index, #tx_buffer
+                        setbyte p_wr_data
+                        incmod tx_wr_index, #((tx_buffer_end-tx_buffer)*4-1)
+                        add p_wr_ptr, #1
+
+                        tjf p_wr_size, #.next_byte
+                        sub p_wr_size, #1
+                        jmp #.next_byte
+
+                        ' trigger the isr before returning if the smartpin data register isn't full
+                        ' note: there seems to be a race condition and a byte may be dropped if we re-trigger
+                        ' the ISR too soon after the previous, thus this is in a critical section
+.done                   stalli
+                        nop
+                        nop
+                        testp service_tx_pin wz         ' Z: 0=No ACK, 1=ACK (buffer free)
+                        rqpin p_wr_scratch, service_tx_pin wc    ' C: 1=Busy, 0=Idle
+        if_z_or_nc      trgint2
+                        allowi
+                        ret
+
+
+'------------------------------
+' read_asm
+'       reads data from the receive circular buffer
+' and blocks until either all the requested data is
+' read or the timeout condition is met
+'
+' Arguments
+' PR0   p_rd_ptr        pointer to buffer to read data to
+' PR1   p_rd_size       number of bytes to be read
+' PR2   p_rd_timeout    time when to break early, in system clock units, used for CT1, or TIME_IMMEDIATE / TIME_INFINITE
+'
+' Returns
+' PR0   p_rd_ptr        pointer to last byte received + 1
+' PR1   p_rd_size       number of bytes remaining to be received
+' PR2   p_rd_timeout    (clobbered)
+' PR3   p_rd_scratch    (clobbered)
+'
+' Hardware:
+' CT1
+'------------------------------
+                        ' adjust CT1 to trigger when a timeout condition occurs
+read_asm                add p_rd_timeout, #1    ' nudge timeout by one clock, moving TIME_INFINITE to 0 (normally passed as -1)
+                        addct1 p_rd_timeout, #0
+
+                        ' check if there is any remaining data requested
+.loop                   tjz p_rd_size, #.done
+
+                        ' check if there is any data in the buffer
+                        cmp rx_wr_index, rx_rd_index wz
+              if_z      jmp #.busy
+
+                        ' write a byte from the circular buffer to the pointer
+                        altgb rx_rd_index, #rx_buffer
+                        getbyte p_rd_scratch
+                        wrbyte p_rd_scratch, p_rd_ptr
+                        incmod rx_rd_index, #((rx_buffer_end-rx_buffer)*4-1)
+                        add p_rd_ptr, #1
+                        sub p_rd_size, #1
+
+                        ' skip timeout check until the buffer is empty
+                        jmp #.loop
+
+                        ' check if a timeout condition has been met
+.busy                   cmp p_rd_timeout, #0 wz
+              if_nz     jct1 #.done
+                        jmp #.loop
+
+.done                   ret
+
+
+'------------------------------
+' rx_isr (interrupt 1)
+'       handle receiving from an async serial rx smartpin
+' into the receive circular buffer
+'------------------------------
+                        ' immediately read the data from the smartpin even if there is no buffer space available, this
+                        ' is to clear the INA flag
+rx_isr                  rdpin rx_isr_reg0, service_rx_pin
+
+                        ' check if there is enough buffer space, if not flag there was an overflow
+                        mov rx_isr_reg1, rx_wr_index
+                        incmod rx_isr_reg1, #((rx_buffer_end-rx_buffer)*4-1)
+                        cmp rx_isr_reg1, rx_rd_index wz                         ' Z=1 if buffer full
+              if_nz     jmp #.read
+                        bith service_config, #RX_OVERFLOW_ERROR_POS
+
+                        ' break if buffer is full and overwriting isn't supported, else drop
+                        ' the last byte received to make room
+                        testbn service_config, #RX_OVERFLOW_MODE_POS andz
+              if_z      reti1
+                        incmod rx_rd_index, #((rx_buffer_end-rx_buffer)*4-1)
+
+                        ' read and verify the 2nd stop bit (if enabled)
+.read                   testb service_config, #STOPBITS_POS wz
+        if_z            rcl rx_isr_reg0, #1 wc
+        if_z_and_nc     bith service_config, #RX_FRAMING_ERROR_POS
+        if_z_and_nc     reti1                                                   ' early exit if the stop bit isn't high (1)
+
+                        ' read and verify the parity bit if enabled
+                        shr rx_isr_reg0, #32-9
+                        testb service_config, #PARITY_POS wz
+                        and rx_isr_reg0, #$1FF wc                               ' calculate parity (9 bits)
+                        testb service_config, #(PARITY_POS + 1) xorc            ' C=1 when parity doesn't equal expected parity
+        if_z_and_c      bith service_config, #RX_PARITY_ERROR_POS
+        if_z_and_c      reti1
+        if_nz           shr rx_isr_reg0, #1
+
+                        ' write received byte to circular buffer
+                        altsb rx_wr_index, #rx_buffer
+                        setbyte rx_isr_reg0
+                        incmod rx_wr_index, #((rx_buffer_end-rx_buffer)*4-1)
+                        reti1
+
+
+'------------------------------
+' tx_isr (interrupt 2)
+'       handles enqueing more data to an async serial tx smartpin when the y
+' register becomes available (IN rising edge)
+'------------------------------
+                        ' early return if there is no remaining data to send
+tx_isr                  cmp tx_wr_index, tx_rd_index wz
+              if_z      reti2
+
+                        ' get the next byte from the circular buffer
+                        altgb tx_rd_index, #tx_buffer
+                        getbyte tx_isr_reg0
+
+                        ' add parity and extra stop bit based on configuration
+                        and tx_isr_reg0, #$FF wc                                ' calculate parity of the data
+                        bith tx_isr_reg0, #8 ADDBITS 1                          ' set either possible stop bits high (bit 9 and 10 depending on parity)
+                        testb service_config, #PARITY_POS wz                    ' Z=1 when parity is enabled
+                        testb service_config, #(PARITY_POS + 1) xorc
+              if_z      bitc tx_isr_reg0, #8                                    ' reg0[8] = PARITY[1] ^ reg0[7:0].parity
+
+                        ' write bits to smartpin
+                        wypin tx_isr_reg0, service_tx_pin
+                        incmod tx_rd_index, #((tx_buffer_end-tx_buffer)*4-1)
+                        reti2
+
+service_end
+
+'------------------------------
+' DATA
+'------------------------------
+'tx circular buffer indicies
+tx_wr_index             res     1
+tx_rd_index             res     1
+
+' rx circular buffer indicies
+rx_wr_index             res     1
+rx_rd_index             res     1
+
+' service configuration data
+clk_milli               res     1
+service_tx_pin          res     1
+service_rx_pin          res     1
+
+' interrupt scratch registers
+tx_isr_reg0             res     1
+rx_isr_reg0             res     1
+rx_isr_reg1             res     1
+
+' tx and rx buffers, evenly split using remaining memory to fill up to _USER_SPACE_END (exclusive)
+rx_buffer               res     (_USER_SPACE_END - rx_buffer) / 2
+rx_buffer_end
+
+tx_buffer               res     _USER_SPACE_END - tx_buffer
+tx_buffer_end
+
+                        fit _USER_SPACE_END
+
+
+
+'------------------------------
+' PRx Register Aliasing
+'------------------------------
+                        org $1D8
+' Assembly Function Arguments, Return Values, and Scratch Registers
+'       Note: these values will not persist between calls normal calls, and must not be
+'       used in interrupts.
+p_svc_clkmilli
+p_gs_status
+p_rd_ptr
+p_wr_ptr                res 1  ' PR0
+
+p_srv_tx_pin
+p_rd_size
+p_wr_size               res 1  ' PR1
+
+p_srv_rx_pin
+p_rd_timeout
+p_wr_timeout            res 1  ' PR2
+
+p_rd_scratch
+p_wr_scratch            res 1  ' PR3
+
+
+p_wr_data               res 1  ' PR4
+
+
+unused1                 res 1  ' PR5
+unused2                 res 1  ' PR6
+
+' Persistent Variables
+'       Note: these exist perpetually during the operation of this code and
+'       should not be overwritten at any point.
+service_config          res 1  ' PR7
+
+
+' Interrupt Scratch Registers
+'       these values may get overwritten asyncronously from normal
+'       code execution due to interrupts; cannot be used in non-isr code
+
+                        fit $1E0
+
+
+CON
+{{
+
+================================================================================
+  MIT License                 hj
+
+  Permission is hereby granted, free of charge, to any person obtaining a copy
+  of this software and associated documentation files (the "Software"), to deal
+  in the Software without restriction, including without limitation the rights
+  to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+  copies of the Software, and to permit persons to whom the Software is
+  furnished to do so, subject to the following conditions:
+
+  The above copyright notice and this permission notice shall be included in all
+  copies or substantial portions of the Software.
+
+  THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+  IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+  FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+  AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+  LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+  OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+  SOFTWARE.
+================================================================================
+}}

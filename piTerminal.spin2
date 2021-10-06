@@ -1,0 +1,294 @@
+{{
+================================================================================
+  Terminal Library
+  Part of the piLibrary ecosystem.
+  Written by DarkInsanePyro under Perpetual Intrigue (pi)
+
+  This library provides a terminal-like interface to the user through a
+  asyncronuous serial communications.  A prompt is provided that enables
+  cursor movement and insertions/deletions anywhere within the inputted line.
+  The library currently utilizes piLibrary's inline serial library to communicate
+  with the outside world with asyncronuous serial communications.
+
+  Changelog:
+  10/06/2021    initial release
+================================================================================
+}}
+CON
+  ' public constants
+
+  STACK_SIZE_BASELINE           = 600
+
+  COMMAND_ACCEPTED              = -1
+  COMMAND_CANCELED              = 0
+
+  ' private constants
+
+  _CURSORUP                     = "A"
+  _CURSORDN                     = "B"
+  _CURSORFW                     = "C"
+  _CURSORBK                     = "D"
+
+  _ESC_COMMAND_TIMEOUT           = 50 ' 50ms before giving up on an escape code
+
+
+
+OBJ
+  piString      : "piString"
+  piCommon      : "piCommon"
+  serial        : "piInlineSerial"
+
+
+
+VAR
+  LONG lineBuffPtr
+  LONG lineBuffSize
+  LONG callbackHandler
+  LONG cog
+
+
+
+DAT
+str_prompt              byte    "> ",0
+cm_fwd                  byte    piString.ESC,"[%dC",0
+cm_rev                  byte    piString.ESC,"[%dD",0
+cm_erase                byte    piString.ESC,"[%dK",0
+cm_clear                byte    piString.ESC,"[%dJ",0
+
+
+
+PUB TLO()
+
+'' Top-Level Object Catch
+''
+'' This object is not designed to be top-level.
+
+  ABORT piCommon.ERROR_INVALIDCALL
+
+
+PUB Start(baudrate, txPin, rxPin, config, callbackMethod, bufferPtr, bufferSize, stackPtr) : id
+
+'' Start the terminal service in a new cog.
+''
+''   This launches a new cog running the terminal code. A hook is provided
+'' that is called when a new terminal line has been entered. The text will
+'' be stored in the buffer and null-terminated.
+''
+'' Arguments:
+''  baudrate       bitrate the serial communications occurs at
+''  txPin          transmit pin (out), -1 to disable writing
+''  rxPin          receive pin (in), -1 to disable reading (not valid)
+''  config         serial config parameters, see piSerial's config argument
+''  callbackMethod pointer to a zero-argument method that is invoked on user input
+''  bufferPtr      buffer to the user's input prompt
+''  bufferSize     size of the user's input prompt buffer
+''  stackPtr       stack pointer, recommended 256 longs minimum
+''
+'' Returns:
+''  none
+
+  ' launch a new cog with the terminal service
+  if cog == 0
+    cog := cogspin(NEWCOG, Run(baudrate, txPin, rxPin, config, callbackMethod, bufferPtr, bufferSize), stackPtr) + 1
+    return cog - 1
+
+  return -1
+
+
+PUB Stop()
+
+'' Stops the terminal service's cog.
+
+  if cog > 0
+    cogstop(cog - 1)
+    cog~~
+
+
+PUB Run(baudrate, txPin, rxPin, config, callbackMethod, bufferPtr, bufferSize)
+
+'' Runs the terminal service in the current cog.
+''
+''   This runs the terminal service in place on the currently running cog. A hook is provided
+'' that is called when a new terminal line has been entered. The text will be stored in the
+'' buffer and null-terminated. This method does not return.
+''
+'' Arguments:
+''  baudrate       bitrate the serial communications occurs at
+''  txPin          transmit pin (out), -1 to disable writing
+''  rxPin          receive pin (in), -1 to disable reading (not valid)
+''  config         serial config parameters, see piSerial's config argument
+''  callbackMethod pointer to a zero-argument method that is invoked on user input
+''  bufferPtr      buffer to the user's input prompt
+''  bufferSize     size of the user's input prompt buffer
+
+  ' save arguments
+  callbackHandler := callbackMethod
+  lineBuffPtr := bufferPtr
+  lineBuffSize := bufferSize
+
+  ' initialize serial communications
+  serial.Start(baudrate, txPin, rxPin, config)
+  send := @SendWrapper
+  recv := @RecvWrapper
+
+  ' enter the main service loop
+  ServiceLoop()
+
+
+PUB Prompt(buffer, bufferSize) : status | byte chr, byte null, size, lastSize, idx, esc
+
+'' Retrieves a new line of text from the serial port.
+''
+'' This method provides the user with a prompt, and enables cursor movement
+'' and insertions/deletions. Once ENTER is pressed execution is returned.
+
+  null := 0 ' this null allows chr to be treated as a null-terminated string
+  idx := 0
+  size := 0
+  lastSize := -1
+  esc := piString.ESC
+  bytefill(buffer, 0, bufferSize)
+
+  ' repeat until a command (line) is inputted
+  repeat
+
+    ' reprint the line if characters were added or removed
+    if size <> lastSize
+      piString.SendFormat_1(@cm_rev, 1000)
+      piString.SendFormat_1(@cm_erase, 2)
+      send(@str_prompt)
+      send(buffer)
+      'serial.Write(@str_prompt, 2, piCommon.TIME_INFINITE)
+      'serial.Write(buffer, size, piCommon.TIME_INFINITE)
+      piString.SendFormat_1(@cm_rev, 1000)
+      piString.SendFormat_1(@cm_fwd, idx+2)
+      lastSize := size
+
+    ' read next character/command
+    chr := recv()
+    'serial.Read(@chr, 1, piCommon.TIME_INFINITE)
+
+    case chr
+      ' Handle Backspace
+      piString.DEL, piString.BS:
+        if (idx > 0)
+          bytemove(buffer+idx-1, buffer+idx, size - idx + 1)
+          size--
+          idx--
+
+      ' Handle Escape
+      piString.ESC:
+
+        ' get the next control character, break if timeout hit
+        if serial.Read(@chr, 1, _ESC_COMMAND_TIMEOUT) == 0
+          next
+
+        if chr == "["
+          if serial.Read(@chr, 1, _ESC_COMMAND_TIMEOUT) == 0
+            next
+
+          case chr
+            _CURSORFW:
+              if (idx < size)
+                piString.SendFormat_1(@cm_fwd, 1)
+                idx++
+            _CURSORBK:
+              if (idx > 0)
+                piString.SendFormat_1(@cm_rev, 1)
+                idx--
+
+      ' Handle Ctrl-C
+      piString.ETX:
+        status := COMMAND_CANCELED
+        quit
+
+      ' Handle Standard Characters
+      32..126:
+        if size < bufferSize
+          piString.Insert(buffer, idx++, @chr)
+          size++
+
+      ' Handle Carriage Return (Line Complete)
+      piString.CR:
+        serial.Write(string(piString.CR, piString.LF), 2, piCommon.TIME_INFINITE)
+        status := COMMAND_ACCEPTED
+        quit
+
+      ' Handle Line Feed (Ignore)
+      piString.LF:
+
+      ' Ignore any other characters
+      other:
+
+
+' Terminal software is inconsistent...
+' Backspace
+'   Putty    -> DEL
+'   Realterm -> BS
+'
+' Delete
+'   Putty    -> ESC 126
+'   Realterm -> DEL
+
+
+PRI SendWrapper(str)
+
+'' Callback handler that is executed when SEND is called.
+''
+'' Arguments:
+''  str            string to be written to the serial port
+''
+  serial.Write(str, -1, piCommon.TIME_INFINITE)
+
+
+PRI RecvWrapper(ptr) : data
+
+'' Callback handler that is executed when RECV is called.
+''
+'' Arguments:
+''  ptr            pointer where the byte will be written at
+
+  serial.Read(@data, 1, piCommon.TIME_INFINITE)
+
+
+PRI ServiceLoop() | tok, ntok, status
+
+'' Internal service method for input handling and callback execution.
+''
+'' This method will not be returned from except due to ABORT signals.
+
+  repeat
+
+    ' read a user command
+    status := Prompt(lineBuffPtr, lineBuffSize)
+
+    if callbackHandler > 0
+      callbackHandler(status, lineBuffPtr)
+
+
+
+CON
+{{
+
+================================================================================
+  MIT License
+
+  Permission is hereby granted, free of charge, to any person obtaining a copy
+  of this software and associated documentation files (the "Software"), to deal
+  in the Software without restriction, including without limitation the rights
+  to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+  copies of the Software, and to permit persons to whom the Software is
+  furnished to do so, subject to the following conditions:
+
+  The above copyright notice and this permission notice shall be included in all
+  copies or substantial portions of the Software.
+
+  THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+  IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+  FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+  AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+  LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+  OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+  SOFTWARE.
+================================================================================
+}}
