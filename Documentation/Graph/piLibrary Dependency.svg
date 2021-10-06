@@ -1,0 +1,198 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?><svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" contentScriptType="application/ecmascript" contentStyleType="text/css" height="769px" preserveAspectRatio="none" style="width:561px;height:769px;background:transparent" version="1.1" viewBox="0 0 561 769" width="561px" zoomAndPan="magnify"><defs><filter height="300%" id="ffg2yajnu7z52" width="300%" x="-1" y="-1"><feGaussianBlur result="blurOut" stdDeviation="2.0"/><feColorMatrix in="blurOut" result="blurOut2" type="matrix" values="0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 .4 0"/><feOffset dx="4.0" dy="4.0" in="blurOut2" result="blurOut3"/><feBlend in="SourceGraphic" in2="blurOut3" mode="normal"/></filter></defs><g><!--MD5=[c4d3b8c3a1be84bd44891e78d9a50815]
+class piCommon--><a href="../../piCommon.spin2" target="_top" title="../../piCommon.spin2" xlink:actuate="onRequest" xlink:href="../../piCommon.spin2" xlink:show="new" xlink:title="../../piCommon.spin2" xlink:type="simple"><rect codeLine="7" fill="#FEFECE" filter="url(#ffg2yajnu7z52)" height="228.9609" id="piCommon" style="stroke:#A80036;stroke-width:1.5;" width="150" x="112.97" y="527"/><text fill="#000000" font-family="sans-serif" font-size="12" lengthAdjust="spacing" textLength="62" x="156.97" y="544.457">piCommon</text><line style="stroke:#A80036;stroke-width:1.5;" x1="113.97" x2="261.97" y1="552.0938" y2="552.0938"/><text fill="#000000" font-family="sans-serif" font-size="11" lengthAdjust="spacing" textLength="69" x="118.97" y="585.3486">ERROR_NONE</text><text fill="#000000" font-family="sans-serif" font-size="11" lengthAdjust="spacing" textLength="104" x="118.97" y="599.1846">ERROR_UNSPECIFIED</text><text fill="#000000" font-family="sans-serif" font-size="11" lengthAdjust="spacing" textLength="108" x="118.97" y="613.0205">ERROR_INVALIDCALL</text><text fill="#000000" font-family="sans-serif" font-size="11" lengthAdjust="spacing" textLength="138" x="118.97" y="626.8564">ERROR_INVALIDARGUMENT</text><text fill="#000000" font-family="sans-serif" font-size="11" lengthAdjust="spacing" textLength="130" x="118.97" y="640.6924">ERROR_NOTIMPLEMENTED</text><line style="stroke:#A80036;stroke-width:1.0;stroke-dasharray:1.0,2.0;" x1="113.97" x2="150.97" y1="567.0117" y2="567.0117"/><text fill="#000000" font-family="sans-serif" font-size="11" lengthAdjust="spacing" textLength="74" x="150.97" y="571.0127">ABORT Signals</text><line style="stroke:#A80036;stroke-width:1.0;stroke-dasharray:1.0,2.0;" x1="224.97" x2="261.97" y1="567.0117" y2="567.0117"/><text fill="#000000" font-family="sans-serif" font-size="11" lengthAdjust="spacing" textLength="81" x="118.97" y="672.3643">TIME_IMMEDIATE</text><text fill="#000000" font-family="sans-serif" font-size="11" lengthAdjust="spacing" textLength="66" x="118.97" y="686.2002">TIME_INFINITE</text><line style="stroke:#A80036;stroke-width:1.0;stroke-dasharray:1.0,2.0;" x1="113.97" x2="166.47" y1="654.0273" y2="654.0273"/><text fill="#000000" font-family="sans-serif" font-size="11" lengthAdjust="spacing" textLength="43" x="166.47" y="658.0283">Timeouts</text><line style="stroke:#A80036;stroke-width:1.0;stroke-dasharray:1.0,2.0;" x1="209.47" x2="261.97" y1="654.0273" y2="654.0273"/><line style="stroke:#A80036;stroke-width:1.5;" x1="113.97" x2="261.97" y1="692.6172" y2="692.6172"/><text fill="#000000" font-family="sans-serif" font-size="11" lengthAdjust="spacing" textLength="125" x="118.97" y="708.0361">TimeoutToCounts(timeout)</text><text fill="#000000" font-family="sans-serif" font-size="11" lengthAdjust="spacing" textLength="124" x="118.97" y="721.8721">CountsToTimeout(counts)</text><text fill="#000000" font-family="sans-serif" font-size="11" lengthAdjust="spacing" textLength="104" x="118.97" y="735.708">TimeoutToCT(timeout)</text><text fill="#000000" font-family="sans-serif" font-size="11" lengthAdjust="spacing" textLength="99" x="118.97" y="749.5439">AbortToString(code)</text></a><!--MD5=[d3df1cba0278c53beac5cc0ceef3ddab]
+class piString--><rect codeLine="25" fill="#FEFECE" filter="url(#ffg2yajnu7z52)" height="290.1406" id="piString" style="stroke:#A80036;stroke-width:1.5;" width="223" x="76.47" y="177"/><text fill="#000000" font-family="sans-serif" font-size="12" lengthAdjust="spacing" textLength="42" x="166.97" y="194.457">piString</text><line style="stroke:#A80036;stroke-width:1.5;" x1="77.47" x2="298.47" y1="202.0938" y2="202.0938"/><text fill="#000000" font-family="sans-serif" font-size="11" lengthAdjust="spacing" textLength="162" x="82.47" y="235.3486">NUL, SOH, ...RS, US, SPACE, DEL</text><line style="stroke:#A80036;stroke-width:1.0;stroke-dasharray:1.0,2.0;" x1="77.47" x2="141.97" y1="217.0117" y2="217.0117"/><text fill="#000000" font-family="sans-serif" font-size="11" lengthAdjust="spacing" textLength="92" x="141.97" y="221.0127">Special Characters</text><line style="stroke:#A80036;stroke-width:1.0;stroke-dasharray:1.0,2.0;" x1="233.97" x2="298.47" y1="217.0117" y2="217.0117"/><text fill="#000000" font-family="sans-serif" font-size="11" lengthAdjust="spacing" textLength="115" x="82.47" y="267.0205">CASE_LOWER, _UPPER</text><text fill="#000000" font-family="sans-serif" font-size="11" lengthAdjust="spacing" textLength="182" x="82.47" y="280.8564">SIGNEDNESS_... SIGNED, _UNSIGNED</text><text fill="#000000" font-family="sans-serif" font-size="11" lengthAdjust="spacing" textLength="0" x="85.47" y="294.6924"/><text fill="#000000" font-family="sans-serif" font-size="11" lengthAdjust="spacing" textLength="78" x="82.47" y="308.5283">SendDec(value)</text><text fill="#000000" font-family="sans-serif" font-size="11" lengthAdjust="spacing" textLength="68" x="82.47" y="322.3643">SendStr(data)</text><text fill="#000000" font-family="sans-serif" font-size="11" lengthAdjust="spacing" textLength="134" x="82.47" y="336.2002">SendFormat(pointer, argptr)</text><text fill="#000000" font-family="sans-serif" font-size="11" lengthAdjust="spacing" textLength="127" x="82.47" y="350.0361">SendFormat_1(data, arg1)</text><text fill="#000000" font-family="sans-serif" font-size="11" lengthAdjust="spacing" textLength="155" x="82.47" y="363.8721">SendFormat_2(data, arg1, arg2)</text><text fill="#000000" font-family="sans-serif" font-size="11" lengthAdjust="spacing" textLength="183" x="82.47" y="377.708">SendFormat_3(data, arg1, arg2, arg3)</text><text fill="#000000" font-family="sans-serif" font-size="11" lengthAdjust="spacing" textLength="211" x="82.47" y="391.5439">SendFormat_4(data, arg1, arg2, arg3, arg4)</text><text fill="#000000" font-family="sans-serif" font-size="11" lengthAdjust="spacing" textLength="64" x="82.47" y="405.3799">Upper(string)</text><text fill="#000000" font-family="sans-serif" font-size="11" lengthAdjust="spacing" textLength="67" x="82.47" y="419.2158">Lower(string)</text><text fill="#000000" font-family="sans-serif" font-size="11" lengthAdjust="spacing" textLength="156" x="82.47" y="433.0518">Insert(string, position, substring)</text><text fill="#000000" font-family="sans-serif" font-size="11" lengthAdjust="spacing" textLength="92" x="82.47" y="446.8877">NextToken(pointer)</text><text fill="#000000" font-family="sans-serif" font-size="11" lengthAdjust="spacing" textLength="0" x="85.47" y="460.7236"/><line style="stroke:#A80036;stroke-width:1.0;stroke-dasharray:1.0,2.0;" x1="77.47" x2="157.97" y1="248.6836" y2="248.6836"/><text fill="#000000" font-family="sans-serif" font-size="11" lengthAdjust="spacing" textLength="60" x="157.97" y="252.6846">Config Flags</text><line style="stroke:#A80036;stroke-width:1.0;stroke-dasharray:1.0,2.0;" x1="217.97" x2="298.47" y1="248.6836" y2="248.6836"/><!--MD5=[8ab6b238d94cd00eeedc82b4e7770c86]
+class piInlineSerial--><rect codeLine="47" fill="#FEFECE" filter="url(#ffg2yajnu7z52)" height="256.6328" id="piInlineSerial" style="stroke:#A80036;stroke-width:1.5;" width="213" x="334.47" y="193.5"/><text fill="#000000" font-family="sans-serif" font-size="12" lengthAdjust="spacing" textLength="72" x="404.97" y="210.957">piInlineSerial</text><line style="stroke:#A80036;stroke-width:1.5;" x1="335.47" x2="546.47" y1="218.5938" y2="218.5938"/><text fill="#000000" font-family="sans-serif" font-size="11" lengthAdjust="spacing" textLength="144" x="340.47" y="251.8486">PARITY_NONE, _EVEN, _ODD</text><text fill="#000000" font-family="sans-serif" font-size="11" lengthAdjust="spacing" textLength="79" x="340.47" y="265.6846">STOPBITS_1, _2</text><text fill="#000000" font-family="sans-serif" font-size="11" lengthAdjust="spacing" textLength="90" x="340.47" y="279.5205">DEFAULT_CONFIG</text><line style="stroke:#A80036;stroke-width:1.0;stroke-dasharray:1.0,2.0;" x1="335.47" x2="410.97" y1="233.5117" y2="233.5117"/><text fill="#000000" font-family="sans-serif" font-size="11" lengthAdjust="spacing" textLength="60" x="410.97" y="237.5127">Config Flags</text><line style="stroke:#A80036;stroke-width:1.0;stroke-dasharray:1.0,2.0;" x1="470.97" x2="546.47" y1="233.5117" y2="233.5117"/><text fill="#000000" font-family="sans-serif" font-size="11" lengthAdjust="spacing" textLength="107" x="340.47" y="311.1924">RX_FRAMING_ERROR</text><text fill="#000000" font-family="sans-serif" font-size="11" lengthAdjust="spacing" textLength="98" x="340.47" y="325.0283">RX_PARITY_ERROR</text><text fill="#000000" font-family="sans-serif" font-size="11" lengthAdjust="spacing" textLength="120" x="340.47" y="338.8643">RX_OVERFLOW_ERROR</text><line style="stroke:#A80036;stroke-width:1.0;stroke-dasharray:1.0,2.0;" x1="335.47" x2="410.97" y1="292.8555" y2="292.8555"/><text fill="#000000" font-family="sans-serif" font-size="11" lengthAdjust="spacing" textLength="60" x="410.97" y="296.8564">Status Flags</text><line style="stroke:#A80036;stroke-width:1.0;stroke-dasharray:1.0,2.0;" x1="470.97" x2="546.47" y1="292.8555" y2="292.8555"/><line style="stroke:#A80036;stroke-width:1.5;" x1="335.47" x2="546.47" y1="345.2813" y2="345.2813"/><text fill="#000000" font-family="sans-serif" font-size="11" lengthAdjust="spacing" textLength="201" x="340.47" y="360.7002">Start(baudrate, txPin, rxPin, config, stack)</text><text fill="#000000" font-family="sans-serif" font-size="11" lengthAdjust="spacing" textLength="30" x="340.47" y="374.5361">Stop()</text><text fill="#000000" font-family="sans-serif" font-size="11" lengthAdjust="spacing" textLength="56" x="340.47" y="388.3721">GetStatus()</text><text fill="#000000" font-family="sans-serif" font-size="11" lengthAdjust="spacing" textLength="132" x="340.47" y="402.208">Write(pointer, size, timeout)</text><text fill="#000000" font-family="sans-serif" font-size="11" lengthAdjust="spacing" textLength="132" x="340.47" y="416.0439">Read(pointer, size, timeout)</text><text fill="#000000" font-family="sans-serif" font-size="11" lengthAdjust="spacing" textLength="152" x="340.47" y="429.8799">ReadLine(pointer, size, timeout)</text><text fill="#000000" font-family="sans-serif" font-size="11" lengthAdjust="spacing" textLength="127" x="340.47" y="443.7158">ReadUntil(pointer, size, ct)</text><!--MD5=[586add94918003665b2f50fe97675852]
+class piTerminal--><rect codeLine="67" fill="#FEFECE" filter="url(#ffg2yajnu7z52)" height="110.2734" id="piTerminal" style="stroke:#A80036;stroke-width:1.5;" width="320" x="27.97" y="7"/><text fill="#000000" font-family="sans-serif" font-size="12" lengthAdjust="spacing" textLength="59" x="158.47" y="24.457">piTerminal</text><line style="stroke:#A80036;stroke-width:1.5;" x1="28.97" x2="346.97" y1="32.0938" y2="32.0938"/><text fill="#000000" font-family="sans-serif" font-size="11" lengthAdjust="spacing" textLength="118" x="33.97" y="47.5127">STACK_SIZE_BASELINE</text><line style="stroke:#A80036;stroke-width:1.5;" x1="28.97" x2="346.97" y1="53.9297" y2="53.9297"/><text fill="#000000" font-family="sans-serif" font-size="11" lengthAdjust="spacing" textLength="308" x="33.97" y="69.3486">Start(baudrate, txPin, rxPin, config, callback, buffer, size, stack)</text><text fill="#000000" font-family="sans-serif" font-size="11" lengthAdjust="spacing" textLength="272" x="33.97" y="83.1846">Run(baudrate, txPin, rxPin, config, callback, buffer, size)</text><text fill="#000000" font-family="sans-serif" font-size="11" lengthAdjust="spacing" textLength="30" x="33.97" y="97.0205">Stop()</text><text fill="#000000" font-family="sans-serif" font-size="11" lengthAdjust="spacing" textLength="97" x="33.97" y="110.8564">Prompt(buffer, size)</text><!--MD5=[6723a6dbfb59a4914869e54f1bfe0858]
+class piDiagnostics--><rect codeLine="76" fill="#FEFECE" filter="url(#ffg2yajnu7z52)" height="68.7656" id="piDiagnostics" style="stroke:#A80036;stroke-width:1.5;" width="160" x="382.97" y="27.5"/><text fill="#000000" font-family="sans-serif" font-size="12" lengthAdjust="spacing" textLength="76" x="424.97" y="44.957">piDiagnostics</text><line style="stroke:#A80036;stroke-width:1.5;" x1="383.97" x2="541.97" y1="52.5938" y2="52.5938"/><line style="stroke:#A80036;stroke-width:1.5;" x1="383.97" x2="541.97" y1="60.5938" y2="60.5938"/><text fill="#000000" font-family="sans-serif" font-size="11" lengthAdjust="spacing" textLength="132" x="388.97" y="76.0127">StackPrepare(pointer, size)</text><text fill="#000000" font-family="sans-serif" font-size="11" lengthAdjust="spacing" textLength="148" x="388.97" y="89.8486">StackGetUnused(pointer, size)</text><!--MD5=[6b40ef8b99fa5f39a0ed1696e7e81b6e]
+reverse link piString to piCommon--><path codeLine="83" d="M187.97,480.5 C187.97,496.17 187.97,511.85 187.97,526.95 " fill="none" id="piString-backto-piCommon" style="stroke:#A80036;stroke-width:1.0;"/><polygon fill="#A80036" points="187.97,467.35,183.97,473.35,187.97,479.35,191.97,473.35,187.97,467.35" style="stroke:#A80036;stroke-width:1.0;"/><!--MD5=[afbf8b5b6a8e785f7b472c97fd33833f]
+reverse link piInlineSerial to piCommon--><path codeLine="84" d="M330.78,461.28 C307.94,489.95 284.37,519.53 263.12,546.19 " fill="none" id="piInlineSerial-backto-piCommon" style="stroke:#A80036;stroke-width:1.0;"/><polygon fill="#A80036" points="339.16,450.77,332.2932,452.9718,331.6846,460.1571,338.5513,457.9554,339.16,450.77" style="stroke:#A80036;stroke-width:1.0;"/><!--MD5=[a0f5ca9558f70f47c9e158f29d379599]
+reverse link piTerminal to piString--><path codeLine="85" d="M187.97,130.5 C187.97,144.96 187.97,160.76 187.97,176.88 " fill="none" id="piTerminal-backto-piString" style="stroke:#A80036;stroke-width:1.0;"/><polygon fill="#A80036" points="187.97,117.09,183.97,123.09,187.97,129.09,191.97,123.09,187.97,117.09" style="stroke:#A80036;stroke-width:1.0;"/><!--MD5=[c99a25af0d62da5cf0fded6a7e819935]
+reverse link piTerminal to piCommon--><path codeLine="86" d="M95.97,126.16 C80.94,140.98 67.52,158.05 58.97,177 C6,294.5 18.47,344.64 58.97,467 C70.24,501.03 91.05,533.82 112.72,561.55 " fill="none" id="piTerminal-backto-piCommon" style="stroke:#A80036;stroke-width:1.0;"/><polygon fill="#A80036" points="105.5,117.24,98.3857,118.4173,96.7361,125.4372,103.8505,124.2599,105.5,117.24" style="stroke:#A80036;stroke-width:1.0;"/><!--MD5=[2b0250047f6d28d36c92c38abd6c3da1]
+reverse link piTerminal to piInlineSerial--><path codeLine="87" d="M262.3,125.61 C280.63,141.87 299.89,159.69 316.97,177 C322.77,182.87 328.61,188.97 334.44,195.19 " fill="none" id="piTerminal-backto-piInlineSerial" style="stroke:#A80036;stroke-width:1.0;"/><polygon fill="#A80036" points="252.53,117,254.3863,123.9681,261.5323,124.9347,259.676,117.9666,252.53,117" style="stroke:#A80036;stroke-width:1.0;"/><!--MD5=[39de7c6ce16626ed6f70339284c18a45]
+@startuml piLibrary Dependency
+skinparam background transparent
+hide circle
+'hide methods
+'hide members
+
+
+class piCommon [[../../piCommon.spin2]] {
+    .. ABORT Signals ..
+    ERROR_NONE
+    ERROR_UNSPECIFIED
+    ERROR_INVALIDCALL
+    ERROR_INVALIDARGUMENT
+    ERROR_NOTIMPLEMENTED
+    .. Timeouts ..
+    TIME_IMMEDIATE
+    TIME_INFINITE
+    __
+    TimeoutToCounts(timeout)
+    CountsToTimeout(counts)
+    TimeoutToCT(timeout)
+    AbortToString(code)
+}
+
+
+class piString {
+    .. Special Characters ..
+    NUL, SOH, ...RS, US, SPACE, DEL
+    .. Config Flags ..
+    CASE_LOWER, _UPPER
+    SIGNEDNESS_... SIGNED, _UNSIGNED
+
+    SendDec(value)
+    SendStr(data)
+    SendFormat(pointer, argptr)
+    SendFormat_1(data, arg1)
+    SendFormat_2(data, arg1, arg2)
+    SendFormat_3(data, arg1, arg2, arg3)
+    SendFormat_4(data, arg1, arg2, arg3, arg4)
+    Upper(string)
+    Lower(string)
+    Insert(string, position, substring)
+    NextToken(pointer)
+    
+}
+
+
+class piInlineSerial {
+    .. Config Flags ..
+    PARITY_NONE, _EVEN, _ODD
+    STOPBITS_1, _2
+    DEFAULT_CONFIG
+    .. Status Flags ..
+    RX_FRAMING_ERROR
+    RX_PARITY_ERROR
+    RX_OVERFLOW_ERROR
+    __
+    Start(baudrate, txPin, rxPin, config, stack)
+    Stop()
+    GetStatus()
+    Write(pointer, size, timeout)
+    Read(pointer, size, timeout)
+    ReadLine(pointer, size, timeout)
+    ReadUntil(pointer, size, ct)
+}
+
+
+class piTerminal {
+    STACK_SIZE_BASELINE
+    Start(baudrate, txPin, rxPin, config, callback, buffer, size, stack)
+    Run(baudrate, txPin, rxPin, config, callback, buffer, size)
+    Stop()
+    Prompt(buffer, size)
+}
+
+
+class piDiagnostics {
+    StackPrepare(pointer, size)
+    StackGetUnused(pointer, size)
+}
+
+'hide piCommon
+
+piString *- - piCommon
+piInlineSerial *- - piCommon
+piTerminal *- - piString
+piTerminal *- - piCommon
+piTerminal *- - piInlineSerial
+
+@enduml
+
+@startuml piLibrary Dependency
+skinparam background transparent
+hide circle
+
+
+class piCommon [[../../piCommon.spin2]] {
+    .. ABORT Signals ..
+    ERROR_NONE
+    ERROR_UNSPECIFIED
+    ERROR_INVALIDCALL
+    ERROR_INVALIDARGUMENT
+    ERROR_NOTIMPLEMENTED
+    .. Timeouts ..
+    TIME_IMMEDIATE
+    TIME_INFINITE
+    __
+    TimeoutToCounts(timeout)
+    CountsToTimeout(counts)
+    TimeoutToCT(timeout)
+    AbortToString(code)
+}
+
+
+class piString {
+    .. Special Characters ..
+    NUL, SOH, ...RS, US, SPACE, DEL
+    .. Config Flags ..
+    CASE_LOWER, _UPPER
+    SIGNEDNESS_... SIGNED, _UNSIGNED
+
+    SendDec(value)
+    SendStr(data)
+    SendFormat(pointer, argptr)
+    SendFormat_1(data, arg1)
+    SendFormat_2(data, arg1, arg2)
+    SendFormat_3(data, arg1, arg2, arg3)
+    SendFormat_4(data, arg1, arg2, arg3, arg4)
+    Upper(string)
+    Lower(string)
+    Insert(string, position, substring)
+    NextToken(pointer)
+    
+}
+
+
+class piInlineSerial {
+    .. Config Flags ..
+    PARITY_NONE, _EVEN, _ODD
+    STOPBITS_1, _2
+    DEFAULT_CONFIG
+    .. Status Flags ..
+    RX_FRAMING_ERROR
+    RX_PARITY_ERROR
+    RX_OVERFLOW_ERROR
+    __
+    Start(baudrate, txPin, rxPin, config, stack)
+    Stop()
+    GetStatus()
+    Write(pointer, size, timeout)
+    Read(pointer, size, timeout)
+    ReadLine(pointer, size, timeout)
+    ReadUntil(pointer, size, ct)
+}
+
+
+class piTerminal {
+    STACK_SIZE_BASELINE
+    Start(baudrate, txPin, rxPin, config, callback, buffer, size, stack)
+    Run(baudrate, txPin, rxPin, config, callback, buffer, size)
+    Stop()
+    Prompt(buffer, size)
+}
+
+
+class piDiagnostics {
+    StackPrepare(pointer, size)
+    StackGetUnused(pointer, size)
+}
+
+
+piString *- - piCommon
+piInlineSerial *- - piCommon
+piTerminal *- - piString
+piTerminal *- - piCommon
+piTerminal *- - piInlineSerial
+
+@enduml
+
+PlantUML version 1.2021.7(Sun May 23 08:40:07 EDT 2021)
+(GPL source distribution)
+Java Runtime: Java(TM) SE Runtime Environment
+JVM: Java HotSpot(TM) Client VM
+Default Encoding: Cp1252
+Language: en
+Country: US
+--></g></svg>

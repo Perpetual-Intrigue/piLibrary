@@ -1,0 +1,94 @@
+@startuml piLibrary Dependency
+
+' this doesn't seem to work... manually editing the SVG
+skinparam background transparent
+
+' "level-of-Detail"
+hide circle
+'hide methods
+'hide members
+
+
+class piCommon [[../../piCommon.spin2]] {
+    .. ABORT Signals ..
+    ERROR_NONE
+    ERROR_UNSPECIFIED
+    ERROR_INVALIDCALL
+    ERROR_INVALIDARGUMENT
+    ERROR_NOTIMPLEMENTED
+    .. Timeouts ..
+    TIME_IMMEDIATE
+    TIME_INFINITE
+    __
+    TimeoutToCounts(timeout)
+    CountsToTimeout(counts)
+    TimeoutToCT(timeout)
+    AbortToString(code)
+}
+
+
+class piString {
+    .. Special Characters ..
+    NUL, SOH, ...RS, US, SPACE, DEL
+    .. Config Flags ..
+    CASE_LOWER, _UPPER
+    SIGNEDNESS_... SIGNED, _UNSIGNED
+
+    SendDec(value)
+    SendStr(data)
+    SendFormat(pointer, argptr)
+    SendFormat_1(data, arg1)
+    SendFormat_2(data, arg1, arg2)
+    SendFormat_3(data, arg1, arg2, arg3)
+    SendFormat_4(data, arg1, arg2, arg3, arg4)
+    Upper(string)
+    Lower(string)
+    Insert(string, position, substring)
+    NextToken(pointer)
+    
+}
+
+
+class piInlineSerial {
+    .. Config Flags ..
+    PARITY_NONE, _EVEN, _ODD
+    STOPBITS_1, _2
+    DEFAULT_CONFIG
+    .. Status Flags ..
+    RX_FRAMING_ERROR
+    RX_PARITY_ERROR
+    RX_OVERFLOW_ERROR
+    __
+    Start(baudrate, txPin, rxPin, config, stack)
+    Stop()
+    GetStatus()
+    Write(pointer, size, timeout)
+    Read(pointer, size, timeout)
+    ReadLine(pointer, size, timeout)
+    ReadUntil(pointer, size, ct)
+}
+
+
+class piTerminal {
+    STACK_SIZE_BASELINE
+    Start(baudrate, txPin, rxPin, config, callback, buffer, size, stack)
+    Run(baudrate, txPin, rxPin, config, callback, buffer, size)
+    Stop()
+    Prompt(buffer, size)
+}
+
+
+class piDiagnostics {
+    StackPrepare(pointer, size)
+    StackGetUnused(pointer, size)
+}
+
+'hide piCommon
+
+piString *-- piCommon
+piInlineSerial *-- piCommon
+piTerminal *-- piString
+piTerminal *-- piCommon
+piTerminal *-- piInlineSerial
+
+@enduml
