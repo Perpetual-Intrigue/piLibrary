@@ -5,10 +5,10 @@
   Written by DarkInsanePyro under Perpetual Intrigue (pi)
 
   This library provides a terminal-like interface to the user through a
-  asyncronuous serial communications.  A prompt is provided that enables
+  asynchronous serial communications.  A prompt is provided that enables
   cursor movement and insertions/deletions anywhere within the inputted line.
   The library currently utilizes piLibrary's inline serial library to communicate
-  with the outside world with asyncronuous serial communications.
+  with the outside world with asynchronous serial communications.
 
   Changelog:
   10/06/2021    initial release

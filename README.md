@@ -1,15 +1,15 @@
 # About
 
-This library was primarily developed as a learning experience but may prove useful as a general purpose suite of libraries usable in a variety of situations.
+This library was primarily developed as a learning experience but may prove useful as a general-purpose suite of libraries usable in a variety of situations.
 
 ## Objective
 
-These files are not intended to be operated as single-file libiraries but rather a collection of smaller libraries that operate cooperatively.
+These files are not intended to be operated as single-file libraries but rather a collection of smaller libraries that operate cooperatively.
 
 The intent is to grow the library as new needs occurs during the various project / demo developments. If there is specify interest or demand adjustments can be made if viable.
 
 ## Library Structure
-The following is a library hirarchy focused on piTerminal as an example structure. It also includes any unreferenced libraries. A brief cutsheet of library features is also listed.
+The following is a library hierarchy focused on piTerminal as an example structure. It also includes any unreferenced libraries. A brief cutsheet of library features is also listed.
 <table style="border-width:0px; margin: 0px; padding: 0px">
 <tr>
 
@@ -24,7 +24,7 @@ The following is a library hirarchy focused on piTerminal as an example structur
 </ul>
 
 <h3>piDiagnostics</h3>
-<p>Troublingshoot and Profiling Tools</p>
+<p>Troubleshooting and Profiling Tools</p>
 <ul style="margin-bottom: 28px">
 <li>Stack Usage Monitoring</li>
 </ul>
@@ -38,7 +38,7 @@ The following is a library hirarchy focused on piTerminal as an example structur
 </ul>
 
 <h3>piInlineSerial</h3>
-<p>Asyncronuous Serial Communication as Background Service</p>
+<p>Asynchronous Serial Communication as Background Service</p>
 <ul style="margin-bottom: 28px">
 <li>Read and Write Buffers</li>
 <li>Automatic background buffer handling</li>
@@ -48,7 +48,7 @@ The following is a library hirarchy focused on piTerminal as an example structur
 <h3>piTerminal</h3>
 <p>Basic Terminal-Like User Interface</p>
 <ul style="margin-bottom: 28px">
-<li>Promp-style Input</li>
+<li>Prompt-style Input</li>
 <li>Cursor Movement</li>
 <li>Inserting/Deleting anywhere within the line</li>
 </ul>
@@ -97,7 +97,7 @@ git clone https://github.com/Perpetual-Intrigue/piLibrary.git
 
 Include any required libraries as OBJs within your application. Follow the documentation provided within the library. The recommended way to view this is by using the *Documentation* view within the PropTool application on the target libraries.
 
-Some libraries only provide support functions and should be treated like singletons. Although this isn't possible with the software, the overhead of creating one-off instances of the library are minimal (1 long per instance generally). Library nomenclature follows that singletons use the same library name as seen to indicate it is not genuinely an instance.
+Some libraries only provide support functions and should be treated like singletons. Although this isn't possible with the software, the overhead of creating one-off instances of the library is minimal (1 long per instance generally). Library nomenclature follows where singletons use the same name as the library to indicate it is not genuinely an instance.
 
 ## Basic Example
 ```
@@ -114,4 +114,4 @@ PUB Main()
 
 
 # License
-This library is destributed under the MIT License. See [LICENSE](LICENSE.md) for more information.
+This library is distributed under the MIT License. See [LICENSE](LICENSE.md) for more information.

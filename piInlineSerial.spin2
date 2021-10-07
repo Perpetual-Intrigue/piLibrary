@@ -1,17 +1,17 @@
 {{
 ================================================================================
-  Inline Asyncronous Serial Service Library
+  Inline Asynchronous Serial Service Library
   Part of the piLibrary ecosystem.
   Written by DarkInsanePyro under Perpetual Intrigue (pi)
 
-  This library is designed to provide asyncronous serial communications in the
+  This library is designed to provide asynchronous serial communications in the
   backgrounds concurrently while Spin2 code is executed. Data is sent and
   received to cog register memory until Spin2 api calls are issued to add more
   data to transmit or pull data received.
 
   The library relies on embedded PASM2 code running concurrently and is called
   using interrupts. This requires the user's Spin2 code not to execute inline
-  assembly as thish will overwrite important
+  assembly as this will overwrite important
 
   Dependencies:
   - piCommon
@@ -35,7 +35,7 @@ TODO:
 }
 CON
   ' config field map
-  ' rrrrrrrr_tttttttt_ssssssss_cccccccc
+  ' rrrrrrrr_tttttttt_bbbbbbbbbbbbbbbb
   ' r = rx pin
   ' t = tx pin
   ' b = status / config bitfield
@@ -130,7 +130,7 @@ PUB Start(baudrate, txPin, rxPin, config) | spx, bits
   if txPin < 0 and rxPin < 0
     return
 
-  ' determine number of bits to be transfered, minus one
+  ' determine number of bits to be transferred, minus one
   bits := 8
   if (config & STOPBITS_MSK) == STOPBITS_2
     bits++
@@ -581,7 +581,7 @@ service_end
 '------------------------------
 ' DATA
 '------------------------------
-'tx circular buffer indicies
+'tx circular buffer indices
 tx_wr_index             res     1
 tx_rd_index             res     1
 
@@ -647,7 +647,7 @@ service_config          res 1  ' PR7
 
 
 ' Interrupt Scratch Registers
-'       these values may get overwritten asyncronously from normal
+'       these values may get overwritten asynchronous from normal
 '       code execution due to interrupts; cannot be used in non-isr code
 
                         fit $1E0
