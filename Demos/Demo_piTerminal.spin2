@@ -20,11 +20,16 @@
 ================================================================================
 }}
 CON
-  _xtlfreq                      = 20_000_000
+  ' clock settings (adjust to the board being used)
+  _xtlfreq                      = piBoard.XTAL_FREQ
   _clkfreq                      = 20_000_000
 
-  MAX_LINE_SIZE                 = 256
+  ' demo settings, adjust to change operation of the demo
+  TERMINAL_TX                   = piBoard.DEBUG_TX
+  TERMINAL_RX                   = piBoard.DEBUG_RX
 
+  ' internal demo constants (adjustment not recommended unless demo is modified)
+  MAX_LINE_SIZE                 = 256
   TERM_STACK_SIZE               = term.STACK_SIZE_BASELINE + 100
   BLINK_STACK_SIZE              = 64
 
@@ -35,8 +40,8 @@ OBJ
   piSerial:     "piInlineSerial"
   piCommon:     "piCommon"
   piDiag:       "piDiagnostics"
+  piBoard:      "piP2EvalBSP"
 
-  bsp:          "piP2EvalBSP"
   term:         "piTerminal"
 
 
@@ -46,21 +51,21 @@ VAR
 
   BYTE blinkStack[BLINK_STACK_SIZE]
   BYTE blinkStack2[BLINK_STACK_SIZE]
-  BYTE termStack[term.STACK_SIZE_BASELINE]
+  BYTE termStack[TERM_STACK_SIZE]
 
 
 
-PUB Main() | count
+PUB Main()
 
   piDiag.StackPrepare(@blinkStack, BLINK_STACK_SIZE)
   piDiag.StackPrepare(@termStack, TERM_STACK_SIZE)
 
-  cogspin(NEWCOG, Blink(bsp.LED_8, 2), @blinkStack)
-  cogspin(NEWCOG, Blink(bsp.LED_4, 1), @blinkStack2)
+  cogspin(NEWCOG, Blink(piBoard.LED_8, 2), @blinkStack)
+  cogspin(NEWCOG, Blink(piBoard.LED_4, 1), @blinkStack2)
 
   'term.Run(9600, 0, 1, piSerial.DEFAULT_CONFIG, @CommandHandler, @commandBuffer, MAX_LINE_SIZE)
   ' OR
-  term.Start(9600, 0, 1, piSerial.PARITY_EVEN, @CommandHandler, @commandBuffer, MAX_LINE_SIZE, @termStack)
+  term.Start(9600, 0, 1, piSerial.DEFAULT_CONFIG, @CommandHandler, @commandBuffer, MAX_LINE_SIZE, @termStack)
 
 
 PRI CommandHandler(status, buffer) | tok
@@ -145,7 +150,7 @@ CON
 {{
 
 ================================================================================
-  MIT License                 
+  MIT License
 
   Permission is hereby granted, free of charge, to any person obtaining a copy
   of this software and associated documentation files (the "Software"), to deal

@@ -12,6 +12,8 @@
 ================================================================================
 }}
 CON
+  ' hardware oscillator
+  XTAL_FREQ     = 20_000_000
 
   ' hardware specified serial channels
   DEBUG_TX      = 62

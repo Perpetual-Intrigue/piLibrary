@@ -24,14 +24,9 @@
 TODO:
 - Restart (change baudrate)
 - Flush (wait until tx buffer is empty)
-- Parameter range checks?
-- Optimize register use (maybe, some unallocated PRx... reserve them for later?)
-  - service_config in a register would optimize GetStatus Spin2 api
-- Add Spin2 method to get assembly's service_config register; mainly for error reporting
-  - Hacked in, does it need cleaned up?
+- Parameter range checks
 - TXEN implementation
   - will need a timeout from last byte written...
-- ReadLine, break on \r or \n? Prop Tool didn't work originally
 }
 CON
   ' config field map
@@ -94,11 +89,6 @@ OBJ
 
 
 
-VAR
-  LONG settings
-
-
-
 PUB TLO()
 
 '' Top-Level Object Catch
@@ -108,7 +98,7 @@ PUB TLO()
   ABORT
 
 
-PUB Start(baudrate, txPin, rxPin, config) | spx, bits
+PUB Start(baudrate, txPin, rxPin, config) | spx, bits, settings
 
 '' Start inline serial driver.
 ''
@@ -160,12 +150,14 @@ PUB Start(baudrate, txPin, rxPin, config) | spx, bits
   regexec(@service)
 
 
-PUB Stop() | pin
+PUB Stop() | pin, settings
 
 '' Stop inline serial driver, disables smartpins, and sets tx to hi-z.
 ''
 '' Once called the object must be reinitialized with Start. The cog's user-space assembly can be
 '' loaded with other code or inline assembly can be used within Spin2 code.
+
+  settings := PR7
 
   ' skip if we aren't running
   if settings == 0
@@ -183,7 +175,7 @@ PUB Stop() | pin
 
   ' call low-level stop code
   call(#service_stop)
-  settings := 0
+  PR7 := 0
 
 
 PUB GetStatus() : status
@@ -255,6 +247,7 @@ PUB ReadLine(ptr, size, timeout) : actualSize, complete | byte chr, n, ct
 ''
 '' Returns:
 ''  actualSize     the number of bytes received, excluding the newline characters
+''  complete       TRUE if a newline was received, else FALSE
 
   complete := FALSE
 
