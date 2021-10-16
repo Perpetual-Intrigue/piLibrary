@@ -30,18 +30,25 @@ CON
   #0
         CASE_POS
         SIGNEDNESS_POS
+        TYPE_POS[2]
 
   ' bit masks for each flag
-  CASE_MSK                     = %1 << CASE_POS
-  SIGNEDNESS_MSK               = %1 << SIGNEDNESS_POS
+  CASE_MSK                      = %1 << CASE_POS
+  SIGNEDNESS_MSK                = %1 << SIGNEDNESS_POS
+  TYPE_MSK                      = %11 << TYPE_POS
 
   ' value masks for each case option
   CASE_LOWER                    = 0 << CASE_POS
   CASE_UPPER                    = 1 << CASE_POS
 
   ' value masks for each signedness option
-  SIGNEDNESS_SIGNED             = 0 << SIGNEDNESS_POS
-  SIGNEDNESS_UNSIGNED           = 1 << SIGNEDNESS_POS
+  SIGNEDNESS_UNSIGNED           = 0 << SIGNEDNESS_POS
+  SIGNEDNESS_SIGNED             = 1 << SIGNEDNESS_POS
+
+  ' value masks for each type option
+  TYPE_LONG                     = 0 << TYPE_POS
+  TYPE_WORD                     = 1 << TYPE_POS
+  TYPE_BYTE                     = 2 << TYPE_POS
 
 
 
@@ -87,6 +94,12 @@ PUB SendInt(value, radix, padSize, padChar, flags) | byte isneg, byte buff[33], 
   else
     tablePtr := @base_enc_lo
 
+  ' sign extend to long if smaller than long
+  if (flags & TYPE_MSK) == TYPE_WORD
+    value SIGNX= 15
+  elseif (flags & TYPE_MSK) == TYPE_BYTE
+    value SIGNX= 7
+
   ' remove negative if the value is to be interpreted as signed
   if value < 0 and (flags & SIGNEDNESS_MSK) ==  SIGNEDNESS_SIGNED
     isneg := 1
@@ -122,7 +135,7 @@ PUB SendStr(ptr)
   send(ptr)
 
 
-PUB SendFormat(str, argsptr) | byte chr, byte null, byte argpos, offset, byte padChar, byte padSize
+PUB SendFormat(str, argsptr) | byte usedArg, byte chr, byte argpos, offset
 
 '' Writes a formatted string to the send callback. Arguments are provided by a pointer
 '' to a contiguous set of longs in memory to be used as a dynamic number of arguments.
@@ -130,9 +143,28 @@ PUB SendFormat(str, argsptr) | byte chr, byte null, byte argpos, offset, byte pa
 '' Arguments:
 ''  str            string with optional formatting codes
 ''  argsptr        pointer to a contiguous list of longs to be used for each of the format specifiers
+''
+'' Format:
+''  %[flags][width]<specifier>[.<data type>]
+''
+''  Flags:
+''    0            pads with zeros instead of spaces
+''
+''  Width:
+''    Unsigned decimal from 0 to 255
+''
+''  Specifiers:
+''    Standard:
+''      %, d, i, u, o, x, X, s (refer to C++ printf manuals)
+''    Special:
+''      b          base-2 (binary) unsigned value
+''
+''  Data Types:
+''    .b           byte (sign extends from bit 7)
+''    .w           word (sign extends from bit 15)
+''    .l           long (no sign extending, default)
 
   argpos := 0
-  null := 0
   offset := 0
 
   repeat
@@ -150,55 +182,116 @@ PUB SendFormat(str, argsptr) | byte chr, byte null, byte argpos, offset, byte pa
       str += offset
       offset := 0
 
-      chr := byte[++str]
-      padChar := " "
-      padSize := 0
-
-      ' parse the flags field
-      repeat
-        case chr
-          "-": ABORT piCommon.ERROR_NOTIMPLEMENTED
-          "+": ABORT piCommon.ERROR_NOTIMPLEMENTED
-          " ": ABORT piCommon.ERROR_NOTIMPLEMENTED
-          "#": ABORT piCommon.ERROR_NOTIMPLEMENTED
-          "0": padChar := "0"
-          other: quit
-        chr := byte[++str]
-
-      ' parse the width field
-      repeat while chr >= "0" and chr <= "9"
-        padSize := padSize * 10 + (chr - "0")
-        chr := byte[++str]
-
-      ' get the format specifier and execute accordingly
-      ++str
-      case_fast chr
-        ' escaped character
-        "%":      SendStr(@chr)
-
-        ' standard format specifiers
-        "d","i":  SendInt(long[argsptr][argpos++], 10, padSize, padChar, SIGNEDNESS_SIGNED)
-        "u":      SendInt(long[argsptr][argpos++], 10, padSize, padChar, SIGNEDNESS_UNSIGNED)
-        "o":      SendInt(long[argsptr][argpos++], 8,  padSize, padChar, SIGNEDNESS_UNSIGNED)
-        "x":      SendInt(long[argsptr][argpos++], 16, padSize, padChar, SIGNEDNESS_UNSIGNED | CASE_LOWER)
-        "X":      SendInt(long[argsptr][argpos++], 16, padSize, padChar, SIGNEDNESS_UNSIGNED | CASE_UPPER)
-        "s":      SendStr(long[argsptr][argpos++])
-
-        ' custom format specifiers
-        "b":      SendInt(long[argsptr][argpos++], 2,  padSize, padChar, SIGNEDNESS_UNSIGNED)
-
-        ' unsupported format specifiers
-        "f", "F", "e","E","g","G","a","A","p","n":
-          ABORT piCommon.ERROR_NOTIMPLEMENTED
-
-        ' anything else that isn't handled
-        other:
-          ABORT piCommon.ERROR_INVALIDARGUMENT
+      ' call the format specifier handler, it will return a new string pointer to resume at
+      str, usedArg := HandleFormatSpecifier(str, long[argsptr][argpos])
+      if usedArg
+        argpos++
 
     else
       offset++
 
   send(str)
+
+
+PRI HandleFormatSpecifier(str, arg) : strAfter, usedArg | byte chr, byte padChar, byte padSize, byte command, byte radix, flags
+
+'' Support function for SendFormat, not indended for user calls. Performs formatting and writting of
+'' format specifiers. Starts at the beginning of a format specifier "%" and SEND's the requested content.
+''
+'' Arguments:
+''  str            format specifier string (does not need to be null-terminated)
+''  arg            argument to be used with the format specifier
+''
+'' Returns:
+''  strAfter       adjusted string pointer at the next character after the format specifier
+
+  chr := byte[++str]
+  padChar := " "
+  padSize := 0
+  flags := 0
+  usedArg := TRUE
+
+  ' parse the flags field
+  repeat
+    case chr
+      "-": ABORT piCommon.ERROR_NOTIMPLEMENTED
+      "+": ABORT piCommon.ERROR_NOTIMPLEMENTED
+      " ": ABORT piCommon.ERROR_NOTIMPLEMENTED
+      "#": ABORT piCommon.ERROR_NOTIMPLEMENTED
+      "0": padChar := "0"
+      other: quit
+    chr := byte[++str]
+
+  ' parse the width field
+  repeat while chr >= "0" and chr <= "9"
+    padSize := padSize * 10 + (chr - "0")
+    chr := byte[++str]
+
+  ' parse format specifier
+  command := chr
+  case_fast chr
+    ' escaped character
+    "%":
+
+    ' standard numeric format specifiers
+    "d","i":
+      command := "i"
+      radix := 10
+      flags |= SIGNEDNESS_SIGNED
+    "u":
+      command := "i"
+      radix := 10
+    "o":
+      command := "i"
+      radix := 8
+    "x":
+      command := "i"
+      radix := 16
+    "X":
+      command := "i"
+      radix := 16
+      flags |= CASE_UPPER
+
+    ' standard string format specifiers
+    "s":
+
+    ' custom format specifiers
+    "b":
+      command := "i"
+      radix := 2
+
+    ' unsupported format specifiers
+    "f", "F", "e","E","g","G","a","A","p","n":
+      ABORT piCommon.ERROR_NOTIMPLEMENTED
+
+    ' anything else that isn't handled
+    other:
+      ABORT piCommon.ERROR_INVALIDARGUMENT
+
+  ' parse data size specifier (custom)
+  chr := byte[++str]
+  if chr == "."
+    chr := byte[++str]
+    ++str
+    case_fast chr
+      "b":      flags |= TYPE_BYTE
+      "w":      flags |= TYPE_WORD
+      "l":      flags |= TYPE_LONG
+      other:    str -= 2 ' rewind for unrecognized characters
+
+  strAfter := str
+
+  ' Print Formatted String
+  case_fast command
+    "%":
+      SendStr(string("%"))
+      usedArg := FALSE
+    "i":
+      SendInt(arg, radix, padSize, padChar, flags)
+    "s":
+      SendStr(arg)
+    other:
+      ABORT piCommon.ERROR_UNSPECIFIED
 
 
 PUB SendFormat_1(str, arg1)
