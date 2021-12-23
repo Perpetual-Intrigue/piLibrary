@@ -457,7 +457,7 @@ PUB NextToken(ptr) : tokptr | curptr, byte chr
     curptr++
 
 
-PUB ToInt(ptr) : value | byte isneg, byte chr
+PUB ToInt(ptr, valuePtr) | byte isneg, byte chr, value
 
 '' Converts a string to integer, similar to atoi.
 ''
@@ -479,6 +479,8 @@ PUB ToInt(ptr) : value | byte isneg, byte chr
     isneg := 0
 
   ' convert the value to integer, one character at a time
+  value := 0
+
   repeat while (chr := byte[ptr++]) <> 0
     ' catch if there is a non-digit provided
     if chr < "0" or chr > "9"
@@ -490,6 +492,9 @@ PUB ToInt(ptr) : value | byte isneg, byte chr
   ' convert to negative... if negative
   if isneg
     value := -value
+
+  ' write the value to the target memory
+  long[valuePtr] := value
 
 
 

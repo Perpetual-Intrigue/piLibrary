@@ -16,14 +16,32 @@
 }}
 CON
   ' public constants
-
-  STACK_SIZE_BASELINE           = 600
-
   COMMAND_ACCEPTED              = -1
   COMMAND_CANCELED              = 0
 
-  ' private constants
+  #30
+    FG_BLACK
+    FG_RED
+    FG_GREEN
+    FG_YELLOW
+    FG_BLUE
+    FG_MAGENTA
+    FG_CYAN
+    FG_WHITE
 
+  #40
+    BG_BLACK
+    BG_RED
+    BG_GREEN
+    BG_YELLOW
+    BG_BLUE
+    BG_MAGENTA
+    BG_CYAN
+    BG_WHITE
+
+  COLOR_RESET                   = 0
+
+  ' private constants
   _CURSORUP                     = "A"
   _CURSORDN                     = "B"
   _CURSORFW                     = "C"
@@ -34,17 +52,8 @@ CON
 
 
 OBJ
-  piString      : "piString"
   piCommon      : "piCommon"
-  serial        : "piInlineSerial"
-
-
-
-VAR
-  LONG lineBuffPtr
-  LONG lineBuffSize
-  LONG callbackHandler
-  LONG cog
+  piString      : "piString"
 
 
 
@@ -64,75 +73,6 @@ PUB TLO()
 '' This object is not designed to be top-level.
 
   ABORT piCommon.ERROR_INVALIDCALL
-
-
-PUB Start(baudrate, txPin, rxPin, config, callbackMethod, bufferPtr, bufferSize, stackPtr) : id
-
-'' Start the terminal service in a new cog.
-''
-''   This launches a new cog running the terminal code. A hook is provided
-'' that is called when a new terminal line has been entered. The text will
-'' be stored in the buffer and null-terminated.
-''
-'' Arguments:
-''  baudrate       bitrate the serial communications occurs at
-''  txPin          transmit pin (out), -1 to disable writing
-''  rxPin          receive pin (in), -1 to disable reading (not valid)
-''  config         serial config parameters, see piSerial's config argument
-''  callbackMethod pointer to a zero-argument method that is invoked on user input
-''  bufferPtr      buffer to the user's input prompt
-''  bufferSize     size of the user's input prompt buffer
-''  stackPtr       stack pointer, recommended 256 longs minimum
-''
-'' Returns:
-''  none
-
-  ' launch a new cog with the terminal service
-  if cog == 0
-    cog := cogspin(NEWCOG, Run(baudrate, txPin, rxPin, config, callbackMethod, bufferPtr, bufferSize), stackPtr) + 1
-    return cog - 1
-
-  return -1
-
-
-PUB Stop()
-
-'' Stops the terminal service's cog.
-
-  if cog > 0
-    cogstop(cog - 1)
-    cog~~
-
-
-PUB Run(baudrate, txPin, rxPin, config, callbackMethod, bufferPtr, bufferSize)
-
-'' Runs the terminal service in the current cog.
-''
-''   This runs the terminal service in place on the currently running cog. A hook is provided
-'' that is called when a new terminal line has been entered. The text will be stored in the
-'' buffer and null-terminated. This method does not return.
-''
-'' Arguments:
-''  baudrate       bitrate the serial communications occurs at
-''  txPin          transmit pin (out), -1 to disable writing
-''  rxPin          receive pin (in), -1 to disable reading (not valid)
-''  config         serial config parameters, see piSerial's config argument
-''  callbackMethod pointer to a zero-argument method that is invoked on user input
-''  bufferPtr      buffer to the user's input prompt
-''  bufferSize     size of the user's input prompt buffer
-
-  ' save arguments
-  callbackHandler := callbackMethod
-  lineBuffPtr := bufferPtr
-  lineBuffSize := bufferSize
-
-  ' initialize serial communications
-  serial.Start(baudrate, txPin, rxPin, config)
-  send := @SendWrapper
-  recv := @RecvWrapper
-
-  ' enter the main service loop
-  ServiceLoop()
 
 
 PUB Prompt(buffer, bufferSize) : status | byte chr, byte null, size, lastSize, idx, esc
@@ -180,12 +120,10 @@ PUB Prompt(buffer, bufferSize) : status | byte chr, byte null, size, lastSize, i
       piString.ESC:
 
         ' get the next control character, break if timeout hit
-        if serial.Read(@chr, 1, _ESC_COMMAND_TIMEOUT) == 0
-          next
+        chr := recv()
 
         if chr == "["
-          if serial.Read(@chr, 1, _ESC_COMMAND_TIMEOUT) == 0
-            next
+          chr := recv()
 
           case chr
             _CURSORFW:
@@ -210,7 +148,7 @@ PUB Prompt(buffer, bufferSize) : status | byte chr, byte null, size, lastSize, i
 
       ' Handle Carriage Return (Line Complete)
       piString.CR:
-        serial.Write(string(piString.CR, piString.LF), 2, piCommon.TIME_INFINITE)
+        send(string(piString.CR, piString.LF))
         status := COMMAND_ACCEPTED
         quit
 
@@ -231,39 +169,8 @@ PUB Prompt(buffer, bufferSize) : status | byte chr, byte null, size, lastSize, i
 '   Realterm -> DEL
 
 
-PRI SendWrapper(str)
-
-'' Callback handler that is executed when SEND is called.
-''
-'' Arguments:
-''  str            string to be written to the serial port
-''
-  serial.Write(str, -1, piCommon.TIME_INFINITE)
-
-
-PRI RecvWrapper(ptr) : data
-
-'' Callback handler that is executed when RECV is called.
-''
-'' Arguments:
-''  ptr            pointer where the byte will be written at
-
-  serial.Read(@data, 1, piCommon.TIME_INFINITE)
-
-
-PRI ServiceLoop() | tok, ntok, status
-
-'' Internal service method for input handling and callback execution.
-''
-'' This method will not be returned from except due to ABORT signals.
-
-  repeat
-
-    ' read a user command
-    status := Prompt(lineBuffPtr, lineBuffSize)
-
-    if callbackHandler > 0
-      callbackHandler(status, lineBuffPtr)
+PUB SetColor(color)
+  piString.SendFormat_1(string(piString.ESC,"[%um"),color)
 
 
 
