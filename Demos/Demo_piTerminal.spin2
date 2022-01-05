@@ -7,6 +7,15 @@
   This demonstrates the intended operation of the terminal library including
   some example commands and argument parsing hanlded by the callback function.
 
+  Usage:
+    Copy this demo file to the library's root folder. Compile and run this file
+  onto the P2 Eval Board's FLASH memory. Using your favorite terminal (putty recommended),
+  open the corresponding serial port with the appropriate settings.
+
+    If the terminal automatically triggers a board reset, and the switch on the
+  board is enabled, the Propeller will automatically restart, and the startup prompt
+  will be shown soon as you connect.
+
   Dependencies:
   - piString
   - piSerial
@@ -25,24 +34,24 @@ CON
   _clkfreq                      = 20_000_000
 
   ' demo settings, adjust to change operation of the demo
+  TERMINAL_BAUDRATE             = 9600
   TERMINAL_TX                   = piBoard.DEBUG_TX
   TERMINAL_RX                   = piBoard.DEBUG_RX
 
   ' internal demo constants (adjustment not recommended unless demo is modified)
   MAX_LINE_SIZE                 = 256
-  TERM_STACK_SIZE               = term.STACK_SIZE_BASELINE + 100
   BLINK_STACK_SIZE              = 64
 
 
 
 OBJ
   piString:     "piString"
-  piSerial:     "piInlineSerial"
   piCommon:     "piCommon"
   piDiag:       "piDiagnostics"
   piBoard:      "piP2EvalBSP"
 
-  term:         "piTerminal"
+  terminal:     "piTerminal"
+  serial:       "piInlineSerial"
 
 
 
@@ -51,34 +60,63 @@ VAR
 
   BYTE blinkStack[BLINK_STACK_SIZE]
   BYTE blinkStack2[BLINK_STACK_SIZE]
-  BYTE termStack[TERM_STACK_SIZE]
 
 
 
 PUB Main()
 
-  piDiag.StackPrepare(@blinkStack, BLINK_STACK_SIZE)
-  piDiag.StackPrepare(@termStack, TERM_STACK_SIZE)
+'' Application Entry Point
 
+  ' prepare diagnostics on the stacks
+  piDiag.StackPrepare(@blinkStack, BLINK_STACK_SIZE)
+
+  ' launch some example cogs
   cogspin(NEWCOG, Blink(piBoard.LED_8, 2), @blinkStack)
   cogspin(NEWCOG, Blink(piBoard.LED_4, 1), @blinkStack2)
 
-  'term.Run(9600, 0, 1, piSerial.DEFAULT_CONFIG, @CommandHandler, @commandBuffer, MAX_LINE_SIZE)
-  ' OR
-  term.Start(9600, 0, 1, piSerial.DEFAULT_CONFIG, @CommandHandler, @commandBuffer, MAX_LINE_SIZE, @termStack)
+  ' enter terminal (non-returning)
+  RunTerminal()
+
+
+PRI RunTerminal() | status
+
+  ' initialize serial and bind to send/recv hooks
+  serial.Start(TERMINAL_BAUDRATE, TERMINAL_TX, TERMINAL_RX, serial.DEFAULT_CONFIG)
+  send := @SendWrapper
+  recv := @RecvWrapper
+
+  ' write header
+  send(string("piLibrary Terminal Demo",piString.CR,piString.LF))
+  send(string("-----------------------",piString.CR,piString.LF))
+  send(string("type 'help' for commands",piString.CR,piString.LF))
+
+  ' enter infinite loop receiving commands and executing them
+  repeat
+    status := terminal.Prompt(@commandBuffer, MAX_LINE_SIZE)
+    CommandHandler(status, @commandBuffer)
+
+
+PRI SendWrapper(str)
+  serial.Write(str, -1, piCommon.TIME_INFINITE)
+
+
+PRI RecvWrapper() : chr
+  serial.Read(@chr, 1, piCommon.TIME_INFINITE)
 
 
 PRI CommandHandler(status, buffer) | tok
 
   ' no need to process canceled (most likely incomplete) input
-  if status == term.COMMAND_CANCELED
+  if status == terminal.COMMAND_CANCELED
     return
 
+  ' the first token is the command itself
   tok := piString.NextToken(@buffer)
   piString.Lower(tok)
   if tok == 0
     return
 
+  ' fork to the requested command handler, or print an error message
   if strcomp(tok, string("help")) == -1
     send(string("commands: help, cogs, stop, stack",piString.CR,piString.LF))
   elseif strcomp(tok, string("cogs")) == -1
@@ -91,19 +129,43 @@ PRI CommandHandler(status, buffer) | tok
     send(string("unrecognized command", piString.CR, piString.LF))
 
 
-PRI Command_Cogs() | idx
-  piString.SendFormat_1(string("Active Cog = %d", piString.CR, piString.LF), cogid())
+PRI Command_Cogs() | idx, self
 
+'' Provides a list of cogs and their current status by coloring them
+'' using ANSI color codes.
+
+  self := COGID()
+
+  ' print a list of cogs, coloring them depending on their status
   repeat idx from 0 to 7
-    piString.SendFormat_1(string("%d "), idx)
-  send(string(piString.CR,piString.LF))
+    if cogchk(idx) & 1
+      if idx == self
+        terminal.SetColor(terminal.FG_YELLOW)
+      else
+        terminal.SetColor(terminal.FG_GREEN)
+    else
+      terminal.SetColor(terminal.FG_RED)
+    piString.SendFormat_1(string(" %d "), idx)
 
-  repeat idx from 0 to 7
-    piString.SendFormat_1(string("%d "), cogchk(idx) & 1)
-  send(string(piString.CR,piString.LF))
+  ' print the color legend
+  send(string(piString.CR,piString.LF,piString.CR,piString.LF))
+  terminal.SetColor(terminal.FG_YELLOW)
+  send(string("current "))
+  terminal.SetColor(terminal.FG_GREEN)
+  send(string("running "))
+  terminal.SetColor(terminal.FG_RED)
+  send(string("stopped",piString.CR,piString.LF))
+
+  ' reset terminal color for future commands
+  terminal.SetColor(terminal.COLOR_RESET)
+  return
 
 
-PRI Command_Stop(buffer) | id, tok
+PRI Command_Stop(buffer) | id, status, tok
+
+'' Stops execution of the requested cog
+''
+'' stop <cogid>
 
   ' get the token that holds the id
   tok := piString.NextToken(@buffer)
@@ -112,7 +174,11 @@ PRI Command_Stop(buffer) | id, tok
     return
 
   ' convert the token to integer
-  id := piString.ToInt(tok)
+  if status := \piString.ToInt(tok, @id)
+    piString.SendFormat_1(string("error parsing integer (%s)",piString.CR,piString.LF), piCommon.AbortToString(status))
+    return
+
+  ' verify it is within bounds
   if id < 0 or id > 7
     piString.SendFormat_1(string("invalid cog id: %d",piString.CR,piString.LF), id)
     return
@@ -122,12 +188,10 @@ PRI Command_Stop(buffer) | id, tok
   cogstop(id)
 
 
-
 PRI Command_Stack() | cnt
 
-  ' write stack usage for the terminal cog
-  cnt := piDiag.StackGetUnused(@termStack, TERM_STACK_SIZE)
-  piString.SendFormat_1(string("Terminal Stack Used = %d bytes", piString.CR, piString.LF), cnt)
+'' Shows how much stack is being used for the example cog(s) and demonstrates
+'' the diagnostics library.
 
   ' write stack usage for the blink cog
   cnt := piDiag.StackGetUnused(@blinkStack, BLINK_STACK_SIZE)
@@ -135,6 +199,8 @@ PRI Command_Stack() | cnt
 
 
 PRI Blink(pin, rate) | delay
+
+'' Rudimentary blinking example to run extra cogs that can be stopped during the demo.
 
   delay := 500 / rate
 
