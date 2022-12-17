@@ -48,7 +48,7 @@ OBJ
   piString:     "piString"
   piCommon:     "piCommon"
   piDiag:       "piDiagnostics"
-  piBoard:      "piP2EvalBSP"
+  piBoard:      "piBspP2Eval"
 
   terminal:     "piTerminal"
   serial:       "piInlineSerial"

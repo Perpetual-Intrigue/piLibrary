@@ -36,7 +36,7 @@ CON
 
 
 OBJ
-  piBoard:      "piP2EvalBSP"
+  piBoard:      "piBspP2Eval"
 
   serial:       "piInlineSerial"
 
