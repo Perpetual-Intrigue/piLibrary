@@ -140,6 +140,8 @@ PUB SendFormat(str, argsptr) | byte usedArg, byte chr, byte argpos, offset
 '' Writes a formatted string to the send callback. Arguments are provided by a pointer
 '' to a contiguous set of longs in memory to be used as a dynamic number of arguments.
 ''
+''    Example: %08b.b (zero-padded 8 character formatted as binary, with an input of an 8-bit value)
+''
 '' Arguments:
 ''  str            string with optional formatting codes
 ''  argsptr        pointer to a contiguous list of longs to be used for each of the format specifiers
@@ -204,6 +206,7 @@ PRI HandleFormatSpecifier(str, arg) : strAfter, usedArg | byte chr, byte padChar
 ''
 '' Returns:
 ''  strAfter       adjusted string pointer at the next character after the format specifier
+''  usedArg        TRUE of the format specifier handled arg, else FALSE if no value was output (text only)
 
   chr := byte[++str]
   padChar := " "

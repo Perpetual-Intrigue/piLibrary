@@ -75,7 +75,7 @@ PUB CountsToTimeout(counts) : timeout
 
 '' Converts from a clock count to a timeout, preserving special
 '' values like TIME_IMMEDIAITE and TIME_INFINITE
-'''
+''
 '' Arguments:
 ''  counts         counts, in clock cycles
 ''
