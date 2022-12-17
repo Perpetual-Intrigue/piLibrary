@@ -20,20 +20,13 @@ CON
   DEBUG_RX      = 63
 
   ' LEDs
-  LED_1         = 63            ' Shared with DEBUG_RX
-  LED_2         = 61
-  LED_3         = 59
-  LED_4         = 57
-  LED_5         = 62            ' Shared with DEBUG_TX
-  LED_6         = 60
-  LED_7         = 58
-  LED_8         = 56
+  LED_1         = 38
+  LED_2         = 39
 
   ' PSRAM
   PSRAM_PIN_CLK = 56
   PSRAM_PIN_CS  = 57
   PSRAM_PIN_D0  = 40
-
   PSRAM_WIDTH   = 16
 
 
