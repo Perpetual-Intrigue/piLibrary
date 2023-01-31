@@ -1,0 +1,40 @@
+CON
+  ACK           = 0
+  NACK          = 1
+
+
+VAR
+  LONG CB_WriteStart
+  LONG CB_WriteStop
+  LONG CB_WriteByte
+  LONG CB_WriteBytes
+  LONG CB_ReadByte
+  LONG CB_ReadBytes
+
+
+PUB SetMethodTable(ptr)
+  longmove(@CB_WriteStart, ptr, 6)
+
+
+PUB WriteStart()
+  CB_WriteStart()
+
+
+PUB WriteStop()
+  CB_WriteStop()
+
+
+PUB WriteByte(data) : resp
+  resp := CB_WriteByte(data):1
+
+
+PUB WriteBytes(ptr, size) : realsize
+  realsize := CB_WriteBytes(ptr, size):1
+
+
+PUB ReadByte(sendack) : data
+  data := CB_ReadByte(sendack):1
+
+
+PUB ReadBytes(ptr, size, lastack)
+  CB_ReadBytes(ptr, size, lastack)

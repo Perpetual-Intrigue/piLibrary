@@ -1,0 +1,123 @@
+CON
+  ADDRESS         = %11010110
+
+  ' Accelerometer Register Map
+  #0
+        RESERVED_1
+        RESERVED_2
+        RESERVED_3
+        RESERVED_4
+        ACT_THS
+        ACT_DUR
+        INT_GEN_CFG_XL
+        INT_GEN_THS_X_XL
+        INT_GEN_THS_Y_XL
+        INT_GEN_THS_Z_XL
+        INT_GEN_DUR_XL
+        REFERENCE_G
+        INT1_CTRL
+        INT2_CTRL
+        RESERVED_5
+        WHO_AM_I
+        CTRL_REG1_G
+        CTRL_REG2_G
+        CTRL_REG3_G
+        ORIENT_CFG_G
+        INT_GEN_SRC_G
+        OUT_TEMP_L
+        OUT_TEMP_H
+        STATUS_REG
+        OUT_X_L_G
+        OUT_X_H_G
+        OUT_Y_L_G
+        OUT_Y_H_G
+        OUT_Z_L_G
+        OUT_Z_H_G
+        CTRL_REG4
+        CTRL_REG5_XL
+        CTRL_REG6_XL
+        CTRL_REG7_XL
+        CTRL_REG8
+        CTRL_REG9
+        CTRL_REG10
+        RESERVED_6
+        INT_GEN_SRC_XL
+        STATUS_REG_2
+        OUT_X_L_XL
+        OUT_X_H_XL
+        OUT_Y_L_XL
+        OUT_Y_H_XL
+        OUT_Z_L_XL
+        OUT_Z_H_XL
+        FIFO_CTRL
+        FIFO_SRC
+        INT_GEN_CFG_G
+        INT_GEN_THS_XH_G
+        INT_GEN_THS_XL_G
+        INT_GEN_THS_YH_G
+        INT_GEN_THS_YL_G
+        INT_GEN_THS_ZH_G
+        INT_GEN_THS_ZL_G
+        INT_GEN_DUR_G
+        RESERVED_7
+
+
+OBJ
+  i2c:          "piI2CMasterBus"
+
+
+VAR
+  BYTE deviceAddress
+
+
+PUB Start(p_deviceAddress, i2cServiceAttach)
+
+  deviceAddress := p_deviceAddress
+
+  ' attach the I2C master bus service to the I2C api interface
+  i2cServiceAttach(@i2c.SetMethodTable)
+
+  ' initialize device
+  'Init()
+
+
+PUB GetGyro() : x, y, z | word regx, word regy, word regz
+
+  ' retrieve register data from IMU
+  i2c.WriteStart()
+  i2c.WriteByte(deviceAddress | 0)
+  i2c.WriteByte(OUT_X_L_G)
+  i2c.WriteStart()
+  i2c.WriteByte(deviceAddress | 1)
+  i2c.ReadBytes(@regx, 6, i2c.NACK)
+  i2c.WriteStop()
+
+  ' convert from words to return type of long
+  x := regx SIGNX 15 * 2000 / 32768
+  y := regy SIGNX 15 * 2000 / 32768
+  z := regz SIGNX 15 * 2000 / 32768
+
+
+PUB GetAccel() : x, y, z | word regx, word regy, word regz
+
+  ' retrieve register data from IMU
+  i2c.WriteStart()
+  i2c.WriteByte(deviceAddress | 0)
+  i2c.WriteByte(OUT_X_L_XL)
+  i2c.WriteStart()
+  i2c.WriteByte(deviceAddress | 1)
+  i2c.ReadBytes(@regx, 6, i2c.NACK)
+  i2c.WriteStop()
+
+  ' convert from words to return type of long
+  x := regx SIGNX 15 * 2000 / 32768
+  y := regy SIGNX 15 * 2000 / 32768
+  z := regz SIGNX 15 * 2000 / 32768
+
+
+PUB Init()
+  i2c.WriteStart()
+  i2c.WriteByte(deviceAddress | 0)
+  i2c.WriteByte($10)
+  i2c.WriteByte(%110_00_0_00)
+  i2c.WriteStop()

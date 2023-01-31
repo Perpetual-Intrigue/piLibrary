@@ -1,0 +1,115 @@
+CON
+  ' clock settings (adjust to the board being used)
+  _xtlfreq                      = piBoard.XTAL_FREQ
+  _clkfreq                      = 200_000_000
+
+  SAMPLE_BUFFER_SIZE            = 32768
+  IMU_ADDR                      = %11010110
+
+
+
+OBJ
+  piBoard:      "piBspP2Eval"
+  logic:        "piLogicAnalyzer"
+  i2cService:   "piI2CMasterService"
+  i2c:          "piI2CMasterBus"
+  imu:          "LSM9DS1"
+  'jm_i2c:       "jm_i2c"
+
+
+DAT
+                                orgh
+                                alignl
+sample_buffer                   long 0[SAMPLE_BUFFER_SIZE]
+
+
+PUB Main()
+
+  'logic.Start(115200, 0, 1, logic.CFG_8CH_P0, @sample_buffer, SAMPLE_BUFFER_SIZE)
+
+  PINSTART(6, P_NORMAL | P_PLUS2_A, 0, 0)
+  PINSTART(7, P_NORMAL | P_PLUS2_A, 0, 0)
+
+  Test_DeviceOwnI2C()
+  'Test_jmI2C()
+  'Test_OwnI2C()
+
+
+PRI Test_DeviceOwnI2C() | x, y, z
+  i2cService.Start(8, 9, 100000)
+  imu.Start(IMU_ADDR, @i2cService.AttachBus)
+  imu.Init()
+
+  debug(`SCOPE IMU SIZE 640 256)
+  debug(`IMU 'x' -2200 2200 256)
+  debug(`IMU 'y' -2200 2200 256)
+  debug(`IMU 'z' -2200 2200 256)
+
+
+
+  repeat
+    x, y, z := imu.GetAccel()
+    debug(`IMU `(x,y,z))
+    waitms(5)
+
+
+
+
+PRI Test_OwnI2C() | word gyX, word gyY, word gyZ, word accX, word accY, word accZ
+  i2cService.Start(8, 9, 100000)
+  i2cService.AttachBus(@i2c.SetMethodTable)
+
+  i2c.WriteStart()
+  i2c.WriteByte(IMU_ADDR | 0)
+  i2c.WriteByte($10)
+  i2c.WriteByte(%110_00_0_00)
+  i2c.WriteStop()
+
+  repeat
+    i2c.WriteStart()
+    i2c.WriteByte(IMU_ADDR | 0)
+    i2c.WriteByte($18)
+    i2c.WriteStart()
+    i2c.WriteByte(IMU_ADDR | 1)
+    i2c.ReadBytes(@gyX, 12, i2c.NACK)
+    i2c.WriteStop()
+    'debug("Gyro = ", sdec_word_(gyX), ", ", sdec_word_(gyY), ", ", sdec_word_(gyZ))
+    debug("Acc  = ", sdec_word_(accX), ", ", sdec_word_(accY), ", ", sdec_word_(accZ))
+
+    waitms(20)
+
+
+{
+PRI Test_jmI2C() | byte ack, word gyX, word gyY, word gyZ, word accX, word accY, word accZ
+
+  jm_i2c.setup(8, 9, 100, jm_i2c.PU_1K5)
+
+  jm_i2c.start()
+  jm_i2c.write(IMU_ADDR | 0)
+  jm_i2c.write($10)
+  jm_i2c.write(%110_00_0_00)
+  jm_i2c.stop()
+
+  repeat
+    jm_i2c.start()
+
+    jm_i2c.write(IMU_ADDR | 0)
+    jm_i2c.write($18)
+    jm_i2c.start()
+    jm_i2c.write(IMU_ADDR | 1)
+    jm_i2c.rd_block(@gyX, 12, 1)
+    jm_i2c.stop()
+
+    'i2c.start()
+    'i2c.write(IMU_ADDR | 0)
+    'i2c.write($28)
+    'i2c.start()
+    'i2c.write(IMU_ADDR | 1)
+    'i2c.rd_block(@accX, 6, 1)
+    'i2c.stop()
+
+    debug("Gyro = ", sdec_word(gyX), ", ", sdec_word(gyY), ", ", sdec_word(gyZ))
+    debug("Acc  = ", sdec_word(accX), ", ", sdec_word(accY), ", ", sdec_word(accZ))
+
+    waitms(500)
+}

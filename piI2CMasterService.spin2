@@ -1,0 +1,157 @@
+{{
+================================================================================
+  Master I2C Library
+  Part of the piLibrary ecosystem.
+  Written by DarkInsanePyro under Perpetual Intrigue (pi)
+
+  This library enables I2C master communications to slave devices.
+
+  Changelog:
+================================================================================
+}}
+CON
+  ACK           = 0
+  NACK          = 1
+
+
+
+VAR
+  BYTE sclPin, sdaPin
+  LONG qtrDelay
+
+
+
+PUB Start(_sclPin, _sdaPin, baudrate) | clock
+
+  sclPin := _sclPin
+  sdaPin := _sdaPin
+
+  clock := muldiv64($8000_0000, 2, clkfreq / baudrate)
+  qtrDelay := clkfreq / baudrate / 4
+
+  'PINSTART(sclPin, P_NCO_FREQ | P_OE, 1, clock)
+  PINSTART(sclPin, P_OE | P_HIGH_1K5, 0, 0)
+  PINSTART(sdaPin, P_OE | P_HIGH_1K5, 0, 0)
+
+  PINH(sclPin)
+  PINH(sdaPin)
+
+
+PUB AttachBus(bindFunc) | cbWriteStart, cbWriteStop, cbWriteByte, cbWriteBytes, cbReadByte, cbReadBytes
+
+  cbWriteStart := @WriteStart
+  cbWriteStop := @WriteStop
+  cbWriteByte := @WriteByte
+  cbWriteBytes := @WriteBytes
+  cbReadByte := @ReadByte
+  cbReadBytes := @ReadBytes
+  bindFunc(@cbWriteStart)
+
+
+PUB WriteStart()
+  PINH(sclPin)
+  PINH(sdaPin)
+  WAITCT(GETCT()+qtrDelay*2)
+  PINL(sdaPin)
+  WAITCT(GETCT()+qtrDelay*2)
+  PINL(sclPin)
+
+
+PUB WriteStop()
+
+  PINL(sdaPin)
+  WAITCT(GETCT()+qtrDelay)
+  PINH(sclPin)
+  WAITCT(GETCT()+qtrDelay*2)
+  PINH(sdaPin)
+  WAITCT(GETCT()+qtrDelay)
+
+
+PUB WriteByte(data) : resp
+
+  repeat 8
+    PINW(sdaPin, (data >> 7) & 1)
+    WAITCT(GETCT()+qtrDelay*2)
+    PINH(sclPin)
+    repeat until PINR(sclPin) == 1                      ' wait for clock to be released (clock stretching)
+    WAITCT(GETCT()+qtrDelay*2)
+    PINL(sclPin)
+    data <<= 1
+
+  PINH(sdaPin)
+  WAITCT(GETCT()+qtrDelay*2)
+  PINH(sclPin)
+  repeat until PINR(sclPin) == 1                        ' wait for clock to be released (clock stretching)
+
+  WAITCT(GETCT()+qtrDelay*2)
+  resp := PINREAD(sdaPin)
+  PINL(sclPin)
+
+
+PUB WriteBytes(ptr, size) : realsize | retack
+  realsize := 0
+  repeat while realsize < size
+    retack := WriteByte(byte[ptr][realsize])
+    if retack == NACK
+      quit
+
+
+PUB ReadByte(sendack) : data
+
+  PINH(sdaPin)
+
+  repeat 8
+    WAITCT(GETCT()+qtrDelay*2)
+    PINH(sclPin)
+    repeat until PINR(sclPin) == 1                        ' wait for clock to be released (clock stretching)
+    data := (data << 1) | PINR(sdaPin)
+    WAITCT(GETCT()+qtrDelay*2)
+    PINL(sclPin)
+
+  PINW(sdaPin, sendack)
+  WAITCT(GETCT()+qtrDelay*2)
+  PINH(sclPin)
+  repeat until PINR(sclPin) == 1                          ' wait for clock to be released (clock stretching)
+  WAITCT(GETCT()+qtrDelay*2)
+  PINL(sclPin)
+
+
+PUB ReadBytes(ptr, size, lastack) | n, nextack
+
+  nextack := 0
+  repeat n from 0 to size-1
+    if (n == size-1)
+      nextack := lastack
+    byte[ptr][n] := ReadByte(nextack)
+
+
+
+
+
+
+
+CON
+{{
+
+================================================================================
+  MIT License
+
+  Permission is hereby granted, free of charge, to any person obtaining a copy
+  of this software and associated documentation files (the "Software"), to deal
+  in the Software without restriction, including without limitation the rights
+  to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+  copies of the Software, and to permit persons to whom the Software is
+  furnished to do so, subject to the following conditions:
+
+  The above copyright notice and this permission notice shall be included in all
+  copies or substantial portions of the Software.
+
+  THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+  IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+  FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+  AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+  LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+  OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+  SOFTWARE.
+================================================================================
+}}
