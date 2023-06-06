@@ -1,0 +1,147 @@
+{{
+================================================================================
+  Logic Analyzer Usage Demo
+  Part of the piLibrary ecosystem.
+  Written by DarkInsanePyro under Perpetual Intrigue (pi)
+
+  This demonstrates the basic functionality of the piLogicAnalyzer library and
+  its integration with 3rd party software.
+
+  Warning:
+    This is an experimental library. It is expected not to be very stable
+  currently.
+
+  Usage:
+    Open this file in Spin Tools IDE and load into the P2. By default (and the easiest)
+  way to view this demo is to use this on a P2 Eval Board with no hardware attached.
+  Program the binary into the flash since usually the P2 reboots when software opens the port.
+
+  Dependencies:
+  - piBspP2Eval
+  - piCommon
+  - piLogicAnalyzer
+  - piInlineSerial
+
+  Changelog:
+  06/05/2023    experimental release
+================================================================================
+}}
+CON
+  _xclkfreq                     = piBoard.XTAL_FREQ
+  _clkfreq                      = 200_000_000
+
+  SAMPLE_BUFFER_SIZE            = 32768 ' must be in blocks of 64 longs
+
+  ' standalone serial interface
+  'LOGIC_COMM_TX                 = 0
+  'LOGIC_COMM_RX                 = 1
+  'LOGIC_COMM_BAUD               = 921600
+
+  ' debugger serial interface
+  LOGIC_COMM_TX                 = piBoard.DEBUG_TX
+  LOGIC_COMM_RX                 = piBoard.DEBUG_RX
+  LOGIC_COMM_BAUD               = 921600
+
+
+
+OBJ
+  piBoard       : "../piBspP2Eval"
+  piCommon      : "../piCommon"
+  logic         : "../piLogicAnalyzer"
+  serial        : "../piInlineSerial"
+
+
+
+VAR
+  LONG  serialCogStack[100]
+  LONG  spinSampleBuffer[SAMPLE_BUFFER_SIZE+1]
+  LONG  blinkStack[10]
+
+
+
+PUB Main() | conf
+  ' initialize the logic analyzer library, note the sample buffer must be long aligned
+  logic.Start(LOGIC_COMM_BAUD, LOGIC_COMM_TX, LOGIC_COMM_RX, logic.CFG_8CH_P16, (@spinSampleBuffer+3)&$FFFF_FFFC, SAMPLE_BUFFER_SIZE)
+  COGSPIN(NEWCOG, RunBlink(), @blinkStack)
+
+  InitSignals()
+  RunPulseSignal()
+
+
+PRI RunBlink()
+  REPEAT
+    PINH(61)
+    WAITMS(250)
+    PINL(61)
+    WAITMS(250)
+
+
+PRI InitSignals()
+  ' start or initialize pattern generators for demo
+  InitClockSignal(13)
+  InitPulseSignal(14)
+  COGSPIN(NEWCOG, RunSerialSignal(15), @serialCogStack)
+
+  ' remap neighboring logici analyzer pins since the streamer can't read smart pin physical states
+  ' 13 (Clock)   -> Pin 16 (Ch. 0)
+  ' 14 (Pattern) -> Pin 17 (Ch. 1)
+  ' 15 (Serial)  -> Pin 18 (Ch. 2)
+  PINSTART(16, P_NORMAL | P_MINUS3_A, 0, 0)
+  PINSTART(17, P_NORMAL | P_MINUS3_A, 0, 0)
+  PINSTART(18, P_NORMAL | P_MINUS3_A, 0, 0)
+
+
+PRI InitClockSignal(pin)
+  PINSTART(pin, P_NCO_FREQ | P_OE, 1, 21474)
+
+
+PRI InitPulseSignal(pin)
+  ' configure streamer frequency and set output
+  org
+    setxfrq ##21474
+    drvl pin
+  end
+
+
+PRI RunPulseSignal() | conf
+  conf := %0100_0000_1 << 23 + 14 << 17 + 32
+  org
+  .loop
+      xcont conf, ##%00000000_00000000_00000000_10101010
+      jmp #.loop
+  end
+
+
+PRI RunSerialSignal(pin)
+  serial.Start(9600, pin, -1, 0)
+
+  repeat
+    serial.Write(string("P2!"), -1, piCommon.TIME_INFINITE)
+    waitms(10)
+
+
+CON
+{{
+
+================================================================================
+  MIT License
+
+  Permission is hereby granted, free of charge, to any person obtaining a copy
+  of this software and associated documentation files (the "Software"), to deal
+  in the Software without restriction, including without limitation the rights
+  to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+  copies of the Software, and to permit persons to whom the Software is
+  furnished to do so, subject to the following conditions:
+
+  The above copyright notice and this permission notice shall be included in all
+  copies or substantial portions of the Software.
+
+  THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+  IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+  FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+  AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+  LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+  OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+  SOFTWARE.
+================================================================================
+}}

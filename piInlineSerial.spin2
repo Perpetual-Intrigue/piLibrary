@@ -80,7 +80,7 @@ CON
   SETTINGS_MASK                 = $FFFF
   FLAGS_MASK                    = RX_FRAMING_ERROR | RX_PARITY_ERROR | RX_OVERFLOW_ERROR
 
-  _USER_SPACE_END                = $124
+  _USER_SPACE_END               = $122
 
 
 

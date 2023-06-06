@@ -1,0 +1,834 @@
+{{
+================================================================================
+  Logic Analyzer Library
+  Part of the piLibrary ecosystem.
+  Written by DarkInsanePyro under Perpetual Intrigue (pi)
+
+  This implements the SUMP protocol to talk to various logic analyzer software
+  solutions on the computer.
+
+  Changelog:
+  - 6/5/2023      experimental demo release
+
+  To-Do:
+  - Trigger mask and value 1 to 3 are ignored
+  - Most configuration flags are ignored
+  - Re-start after a failed trigger i
+
+  Rules:
+  - All trigger mask bits must either be on INA or INB, not both
+================================================================================
+}}
+
+
+
+CON
+  ' Short Commands
+  CMD_RESET                     = $00
+  CMD_ARM                       = $01
+  CMD_IDENT                     = $02
+  CMD_METADATA                  = $04
+  CMD_FINISH                    = $05
+  CMD_QUERYINPUTS               = $06
+
+  CMD_QUERYSTATE                = $07
+  CMD_RETURN_CAPTURE_DATA       = $08
+
+  CMD_ARMADVANCED               = $0F
+  CMD_XON                       = $11
+  CMD_XOFF                      = $13
+
+  ' Long Commands
+  CMD_SETSAMPLERATE             = $80
+  CMD_SETSAMPLECOUNT            = $81
+  CMD_SETFLAGS                  = $82
+  CMD_ADVTRG_CONFSEL            = $9E
+  CMD_ADVTRG_WRDATA             = $9F
+  CMD_TRIG_SETMASK              = $C0
+  CMD_TRIG_SETVALUE             = $C1
+  CMD_TRIG_SETCONFIG            = $C2
+
+  _RX_BUFFER_SIZE               = 4
+
+  #0
+        _STATE_IDLE             ' nothing happening
+        _STATE_PRETRIG          ' pre-trigger samples being acquired
+        _STATE_WAITTRIG         ' waiting for trigger condition
+        _STATE_ACQ              ' post-trigger samples being acquired
+        _STATE_SEND             ' sending acquisition data
+
+
+OBJ
+  piCommon:     "piCommon"
+
+
+
+VAR
+  LONG cog
+
+
+
+PUB TLO()
+
+'' Top-Level Object Catch
+''
+'' This object is not designed to be top-level.
+
+  ABORT
+
+
+
+PUB Start(p_baudrate, txPin, rxPin, pinConfig, buffer, bufferSize) : startedCog | maxSampleRate
+
+'' Start logic analyzer driver.
+''
+'' Arguments:
+''   baudrate     bitrate for the asynchronous serial data should be sent at, in bits-per-second
+''   txpin        smart pin for transmitting on
+''   rxpin        smart pin for receiving on
+''   pinConfig    pin span and base location (use constants provided, not all configurations are valid)
+''   buffer       hub memory pointer to the sample buffer
+''   bufferSize   sample buffer size, in bytes
+''
+'' Returns:
+''  cog           0 on failure, otherwise the new cog +1 is returned
+
+  ' verify buffer is a multiple of 64 bytes and long aligned, else abort
+  if (bufferSize & $1F) <> 0 or (buffer & $3) <> 0
+    ABORT piCommon.ERROR_INVALIDARGUMENT
+
+  ' reduce announced buffer size since the streamer will always load maximum channels but
+  ' sigrok expects the mechanism to only save necessary groups
+  bufferSize /= pinConfig & $FF / 8
+
+  ' write config values to memory that will be copied to the new cog
+  long[@parent_cog] := cogid()
+  long[@baudrate] := p_baudrate
+  long[@tx_pin] := txPin
+  long[@rx_pin] := rxPin
+  long[@buffer_ptr] := buffer
+  long[@buffer_size] := bufferSize
+  long[@max_samplerate] := clkfreq
+  long[@streamer_config] := pinConfig & $FFFF_0000 | (pinConfig << (17 - 8)) & ($3F << 17)
+  long[@group_count] := (pinConfig & $FF / 8)
+  long[@max_samples] := bufferSize / (pinConfig & $FF / 8)
+  long[@pin_offset] := (pinConfig >> 8) & $FF
+
+  ' reconfigure the metainfo structure in Spin to avoid non long-aligned data write issues
+  ' note: metadata is MSB first whereas SUMP protocol is LSB first...
+  maxSampleRate := clkfreq
+  org
+    movbyts bufferSize, #%00_01_10_11
+    movbyts maxSampleRate, #%00_01_10_11
+  end
+  long[@meta_bufsize] := bufferSize
+  long[@meta_samplerate] := maxSampleRate
+  byte[@meta_probes] := pinConfig
+
+  ' launch new cog that handles SUMP commands and streamer control, wait for the cog to start before returning
+  cog := COGINIT(COGEXEC_NEW, @la_entry, 0)
+  WAITATN()
+  return cog+1
+
+
+
+DAT
+                        org
+                        ' signal to the launching cog that it is safe to continue (parameters copied)
+la_entry                decod parent_cog
+                        cogatn parent_cog
+
+                        debug("P2 LA Service Running")
+
+                        ' initialize sub-systems
+                        call #com_init
+                        call #acq_init
+
+                        ' main service loop
+.loop                   mov command, #0
+                        mov x, #command
+                        mov y, #1
+                        call #com_receive
+
+                        ' long command (>= $80), retreive next 4 bytes
+                        mov data, #0
+                        cmp command, #$80 wc
+              if_lt     skipf #%111
+                        mov x, #data
+                        mov y, #4
+                        call #com_receive
+
+                        call #handle_command
+
+                        jmp #.loop
+
+'********************************************************************************
+'* SUMP Protocol Code                                                           *
+'********************************************************************************
+'------------------------------------------------------------
+' handle_command
+'------------------------------------------------------------
+                        ' short commands table
+handle_command          cmp command, #CMD_RESET wz
+              if_z      jmp #.cmd_reset
+                        cmp command, #CMD_ARM wz
+              if_z      jmp #.cmd_arm
+                        cmp command, #CMD_IDENT wz
+              if_z      jmp #.cmd_ident
+                        cmp command, #CMD_METADATA wz
+              if_z      jmp #.cmd_metadata
+
+                        ' long commands table - standard
+                        cmp command, #CMD_SETSAMPLERATE wz
+              if_z      jmp #.cmd_setsamplerate
+                        cmp command, #CMD_SETSAMPLECOUNT wz
+              if_z      jmp #.cmd_setsamplecount
+                        cmp command, #CMD_SETFLAGS wz
+              if_z      jmp #.cmd_setflags
+
+                        ' long commands table - masked
+                        mov index, command
+                        shr index, #2
+                        and index, #%11
+                        andn command, #%1100
+                        cmp command, #CMD_TRIG_SETMASK wz
+              if_z      jmp #.cmd_trig_setmask
+                        cmp command, #CMD_TRIG_SETVALUE wz
+              if_z      jmp #.cmd_trig_setvalue
+                        cmp command, #CMD_TRIG_SETCONFIG wz
+              if_z      jmp #.cmd_trig_setconfig
+
+                        ' fell through, thus unhandled command
+                        debug("unhandled command (", uhex_byte_(command), ")")
+                        ret
+
+
+'-----[ Short Commands ]-----
+.cmd_reset              ' [DEBUG] reset trigger settings
+                        mov r0, #trigger_value
+                        rep #3, #12
+                        altd r0
+                        neg 0-0, #1
+                        add r0, #1
+
+                        call #acq_stop
+                        ret
+
+
+.cmd_arm                ' start acquisition and wait for completion
+                        call #acq_start
+.wait_streamer          cmp acq_state, #_STATE_IDLE wz
+              if_nz     jmp #.wait_streamer
+
+                        ' send acquisition data to host pc
+                        getptr x                        ' calculate offset using FIFO "pointer" (really start address + # of bytes written)
+                        sub x, buffer_ptr
+                        qdiv x, buffer_size
+                        getqy x
+                        qdiv x, group_count
+                        getqx x
+                        mov y, samplecnt_total
+                        call #com_transmit_samples      ' x=offset, y=samplecount
+                        ret
+
+
+.cmd_ident              mov x, #sz_ident
+                        mov y, ##-1
+                        call #com_transmit
+                        ret
+
+
+.cmd_metadata           mov x, #metainfo
+                        mov y, #@metainfo_end - @metainfo
+                        call #com_transmit
+                        ret
+
+
+'-----[ Long Commands ]-----
+.cmd_setsamplerate      mov samplerate, data
+                        add samplerate, #1
+                        ret
+
+
+.cmd_setsamplecount     ' 16-bit LSB is total sample count / 4 - 1
+                        mov samplecnt_total, data
+                        bitl samplecnt_total, #16 ADDBITS 15
+                        add samplecnt_total, #1
+                        shl samplecnt_total, #2
+
+                        ' 16-bit MSB is triggered sample count / 4 - 1
+                        mov samplecnt_post, data
+                        shr samplecnt_post, #16-2
+                        add samplecnt_post, #1<<2
+                        ret
+
+.cmd_setflags           mov flags, data
+                        shr flags, #2
+                        and flags, #$F
+                        xor flags, #$F
+                        ret
+
+
+.cmd_trig_setmask       altd index, #trigger_mask
+                        mov 0-0, data
+                        ret
+
+
+.cmd_trig_setvalue      altd index, #trigger_value
+                        mov 0-0, data
+                        ret
+
+
+.cmd_trig_setconfig     altd index, #trigger_config
+                        mov 0-0, data
+                        ret
+
+
+
+'################################################################################
+'# Acquisition Code                                                             #
+'################################################################################
+'------------------------------------------------------------
+' acq_init
+'------------------------------------------------------------
+                        ' reset state
+acq_init                mov acq_state, #_STATE_IDLE
+                        mov IJMP2, #acq_interrupt
+                        ret
+
+
+'------------------------------------------------------------
+' acq_start
+'------------------------------------------------------------
+acq_start               calld acq_funcptr, #.begin
+                        ret
+
+                        ' set streamer frequency based on divider
+                        ' note: samplerate is a fraction of 100MHz regardless of provided max sample rate through metadata
+                        ' streamer nco = $8000_0000 / (samplerate * max_samplerate / 100E6)
+.begin
+                        debug("ACQUIRING")
+                        mov acq_state, #_STATE_PRETRIG
+                        stalli
+                        qmul max_samplerate, samplerate ' max_samplerate * samplerate (64-bit result)
+                        getqx i20 'lower
+                        getqy i21 'upper
+                        setq i21
+                        qdiv i20, ##100_000_000          ' div = previous calc / 100E6
+                        getqx i20
+                        qdiv ##$8000_0000, i20           ' nco = $8000_0000 / div
+                        getqx i20
+                        getqy i21
+                        cmp i21, #0 wz                   ' adjust +1 if fractional result
+              if_nz     add i20, #1
+                        setxfrq i20
+                        allowi
+
+                        ' initialize FIFO to write to sample buffer
+                        mov i20, buffer_size
+                        shr i20, #6
+                        wrfast i20, buffer_ptr
+
+                        ' skip pre-trigger and trigger-wait logic if no trigger set
+                        tjz trigger_mask+0, #.no_trigger
+
+                        ' pre-fill buffer with pre-trigger samples in case the trigger occurs immediately
+                        mov i20, streamer_config
+                        add i20, samplecnt_total
+                        sub i20, samplecnt_post
+                        xinit i20, #0
+
+                        ' queue a continuous capture and wait for the previous to complete (wait for command buffer to be free)
+                        setint2 #EVENT_XMT
+                        or i20, ##$FFFF
+                        xcont i20, #0
+                        calld acq_funcptr, acq_funcptr wcz
+                        setint2 #INT_OFF
+
+                        ' align trigger mask and value to either INA or INB based on pin offset
+                        testn pin_offset, #$1F wz
+                        modz _nz wz
+              if_z      jmp #.use_msb
+                        mov i20, trigger_mask+0          ' offset INA mask, if mask is empty fall back to INB
+                        shl i20, pin_offset wz
+                        mov i21, trigger_value+0
+                        shl i21, pin_offset
+
+              if_nz     jmp #.use_lsb
+.use_msb
+                        mov i20, trigger_mask+0          ' offset INB mask, either right or left beinging on pin_offset
+                        mov i21, trigger_value+0
+                        mov r2, pin_offset
+                        sub r2, #32 wc
+              if_c      neg r2
+              if_c      shr i20, r2
+              if_c      shr i21, r2
+              if_nc     shl i20, r2
+              if_nc     shl i21, r2
+.use_lsb
+                        ' setup pin pattern matching and wait for the trigger to occur
+                        mov acq_state, #_STATE_WAITTRIG
+                        modcz _z, _set wcz
+                        setpat i20, i21
+                        setint2 #EVENT_PAT
+                        calld acq_funcptr, acq_funcptr wcz
+                        setint2 #INT_OFF
+.no_trigger
+                        ' restart streamer with number of post-trigger samples required
+                        mov acq_state, #_STATE_ACQ
+                        mov i20, streamer_config
+                        add i20, samplecnt_post
+                        xinit i20, #0
+                        setint2 #EVENT_XFI
+                        calld acq_funcptr, acq_funcptr wcz
+                        setint2 #INT_OFF
+
+                        ' capture complete. update state and return (execution should never resume afterwards)
+                        mov acq_state, #_STATE_IDLE
+                        calld acq_funcptr, acq_funcptr wcz
+
+
+'------------------------------------------------------------
+' acq_stop
+'
+' terminates the acquisition currently in progress
+'------------------------------------------------------------
+acq_stop                setint2 #INT_OFF
+                        xinit #0, #0
+              _ret_     mov acq_state, #_STATE_IDLE
+
+
+'------------------------------------------------------------
+' acq_interrupt
+'
+' fires while the async acquisition code is stalled, waiting
+' for an event to occur (streamer, pattern match, etc.)
+'------------------------------------------------------------
+acq_interrupt           calld acq_funcptr, acq_funcptr wcz
+                        reti2
+
+
+
+'################################################################################
+'# Serial Port Communications                                                   #
+'################################################################################
+'------------------------------------------------------------
+' com_init
+'
+' initializes serial port communication sub-system
+'------------------------------------------------------------
+com_init                ' calculate NCO for async serial
+                        rdlong r0, #@clkfreq
+                        qmul r0, ##$1_0000
+                        getqy r1
+                        getqx r0
+                        setq r1
+                        qdiv r0, baudrate
+                        getqx r0
+                        and r0, ##$FFFF_FC00
+                        or r0, #7
+
+                        ' setup transmit pin
+                        dirl tx_pin
+                        wrpin #P_ASYNC_TX | P_OE, tx_pin
+                        wxpin r0, tx_pin
+                        dirh tx_pin
+
+                        ' setup receive pin
+                        dirl rx_pin
+                        wrpin #P_ASYNC_RX, rx_pin
+                        wxpin r0, rx_pin
+                        dirh rx_pin
+
+                        ' initialize buffer pointers
+                        mov rx_wr_offset, #0
+                        mov rx_rd_offset, #0
+
+                        ' enable interrupt-on-high for rx pin (data available)
+                        mov r0, #%110_000000
+                        or r0, rx_pin
+                        setse1 r0
+                        mov IJMP1, #com_rx_isr
+              _ret_     setint1 #EVENT_SE1
+
+
+
+'------------------------------------------------------------
+' com_transmit_samples
+'
+' x = tail sample index (index of the sample after the last recorded)
+' y = sample count
+'
+' r0 = data scratch
+' r1 = addr scratch
+' r2 = buffer_size - 1 (because incmod... AUGH)
+'------------------------------------------------------------
+                        ' wait for the transmit pin to become idle
+com_transmit_samples    rdpin r0, tx_pin wc
+              if_c      jmp #com_transmit_samples
+
+                        ' store max_samples-1 for modulus
+                        mov r2, max_samples
+                        sub r2, #1
+
+                        ' advance index to next sample
+.next_sample            decmod x, r2
+
+                        ' read data from hub memory (long read always even if word or byte size)
+                        mov r1, x
+                        mul r1, group_count
+                        add r1, buffer_ptr
+                        rdlong r0, r1
+
+                        mov r1, #0
+
+                        ' write byte of sample if group is enabled
+.next_group             testb flags, r1 wz
+              if_z      wypin r0, tx_pin
+                        shr r0, #8
+
+                        ' wait for the y register to be free
+.wait                   testp tx_pin wz
+              if_nz     jmp #.wait
+
+                        ' advance group counter, continue if incomplete (less than 4 bytes "sent")
+                        incmod r1, #3 wz
+              if_nz     jmp #.next_group
+
+                        ' continue if samples are still available
+                        djnz y, #.next_sample
+
+                        ' transmit complete
+.done                   ret
+
+
+
+'------------------------------------------------------------
+' com_transmit
+'
+' x = pointer to string/data in cog (long aligned) or hub memory
+' y = number of bytes to write, -1 for null-terminated string
+'
+' r0 = data scratch
+' r1 = mode
+'------------------------------------------------------------
+                        ' wait for the transmit pin to become idle
+com_transmit            rdpin r0, tx_pin wc
+              if_c      jmp #com_transmit
+
+                        ' enable hub reads if address >= $200, else enable cog reads
+                        testn x, #$1FF wz
+              if_z      setd .next, #%100       ' cog ram
+              if_z      shl x, #2
+              if_nz     setd .next, #%011       ' hub ram
+
+                        ' enable reversed address writing if y < -1 (-2 or lower)
+                        setd .advance, #%10
+                        testb y, #31 wz
+              if_nz     jmp #.non_reversed      ' not negative
+                        tjf y, #.non_reversed   ' not -1
+
+                        neg y                   ' make byte count positive
+                        add x, y                ' move the pointer to the last byte (ptr += size - 1)
+                        sub x, #1
+                        setd .advance, #%01
+.non_reversed
+
+                        ' C=0 when y=# of bytes, C=1 when null-terminated mode
+                        modc _clr wc
+                        tjnf y, #$+2
+                        modc _set wc
+
+                        ' write next byte or bail if zero (null termination)
+.next                   skipf #0
+
+                        altgb x                 ' cog ram read
+                        getbyte r0
+
+                        rdbyte r0, x            ' hub ram read
+
+                        ' bail if null-termination if enabled and a zero byte was read
+              if_c      tjz r0, #.done
+
+                        ' write byte to smartpin
+                        wypin r0, tx_pin
+.advance                skipf #0
+                        add x, #1
+                        sub x, #1
+              if_nc     djz y, #.done
+
+                        ' wait for the y register to be free
+.wait                   testp tx_pin wz
+              if_nz     jmp #.wait
+                        jmp #.next
+
+.done                   ret
+
+
+
+'------------------------------------------------------------
+' receive
+'
+' x = pointer to cog RAM buffer
+' y = number of bytes to read
+'
+' r0 = write offset to target buffer
+' r1 = data scratch
+'------------------------------------------------------------
+com_receive             mov r0, #0
+                        tjz y, #.done
+
+                        ' wait for data to become available in theh buffer
+.next                   cmp rx_wr_offset, rx_rd_offset wz
+              if_z      jmp #.next
+
+                        ' move byte from buffer to target memory
+                        altgb rx_rd_offset, #rx_buffer
+                        getbyte r1
+                        incmod rx_rd_offset, #_RX_BUFFER_SIZE*4-1
+                        altsb r0, x
+                        setbyte r1
+                        add r0, #1
+                        djnz y, #.next
+
+.done                   ret
+
+
+
+'------------------------------------------------------------
+' com_rx_isr
+'
+' triggered when the rx smartpin receives a byte
+'------------------------------------------------------------
+                        ' read byte from smartpin
+com_rx_isr              rdpin i10, rx_pin
+                        shr i10, #32-8
+
+                        ' write to circular buffer
+                        altsb rx_wr_offset, #rx_buffer
+                        setbyte i10
+                        incmod rx_wr_offset, #_RX_BUFFER_SIZE*4-1
+                        reti1
+
+
+                        calld INA, IRET1 WCZ
+
+
+'################################################################################
+'# Configuration Memory (modified by caller, data)                              #
+'################################################################################
+' configuration data (modified by calling cog)
+parent_cog              long $FFFFFFFF
+baudrate                long 0
+tx_pin                  long 0
+rx_pin                  long 0
+buffer_ptr              long 0
+buffer_size             long 0
+max_samplerate          long 0
+streamer_config         long 0
+group_count             long 0
+max_samples             long 0
+pin_offset              long 0
+
+' static (pre-initialized) data
+sz_ident                byte "1ALS", 0
+                        alignl
+
+metainfo                ' switch to hub addressing for sub-structure symbols
+                        orgh
+metainfo_h
+                        ' meta-data structure (SUMP protocol defined)
+                        byte $01                        ' Device Name
+                        byte "P2 Logic Analyzer", 0
+'                        byte $20                        ' Usable Probes
+'meta_chancount          byte $00, $00, $00, $08
+                        byte $40                        ' Usable Probes
+meta_probes             byte $00
+                        byte $21                        ' Availaible Sample Memory (bytes)
+meta_bufsize            byte 0[4]                       ' > This is MSB-first and will be written to later
+                        byte $23
+meta_samplerate         byte 0[4]                       ' Maximum Sample Rat
+                        byte 0                          ' End-of-Meta Flag
+
+metainfo_end
+                        alignl
+.end
+                        org metainfo + (.end - metainfo_h) >> 2
+
+
+
+'################################################################################
+'# Runtime Memory / Registers (bss)                                             #
+'################################################################################
+' function argument registers
+x                       res 1
+y                       res 1
+z                       res 1
+
+' function scratch registers
+r0                      res 1
+r1                      res 1
+r2                      res 1
+
+' ISR scratch registers
+i10                     res 1
+i20                     res 1
+i21                     res 1
+
+' command parsing registers
+command                 res 1
+data                    res 1
+index                   res 1
+
+' settings registers
+samplerate              res 1
+samplecnt_total         res 1
+samplecnt_post          res 1
+
+flags                   res 1
+trigger_value           res 4
+trigger_mask            res 4
+trigger_config          res 4
+
+group_mask              res 1
+acq_funcptr             res 1
+acq_state
+
+
+' comm registers / buffers
+rx_buffer               res _RX_BUFFER_SIZE
+rx_wr_offset            res 1
+rx_rd_offset            res 1
+
+
+CON
+' XXXXXXXX_XXXXXXXX_OOOOOOOO_PPPPPPPP
+' X = Streamer Config
+' O = Offset
+' P = Pin Count
+
+  ' 32-Channel Options
+  CFG_32CH_P0   = X_32P_4DAC8_WFLONG | X_WRITE_ON | 0  << 8 | 32
+  CFG_32CH_P8   = X_32P_4DAC8_WFLONG | X_WRITE_ON | 8  << 8 | 32
+  CFG_32CH_P16  = X_32P_4DAC8_WFLONG | X_WRITE_ON | 16 << 8 | 32
+  CFG_32CH_P24  = X_32P_4DAC8_WFLONG | X_WRITE_ON | 24 << 8 | 32
+  CFG_32CH_P32  = X_32P_4DAC8_WFLONG | X_WRITE_ON | 32 << 8 | 32
+  CFG_32CH_P40  = X_32P_4DAC8_WFLONG | X_WRITE_ON | 40 << 8 | 32
+  CFG_32CH_P48  = X_32P_4DAC8_WFLONG | X_WRITE_ON | 48 << 8 | 32
+  CFG_32CH_P56  = X_32P_4DAC8_WFLONG | X_WRITE_ON | 56 << 8 | 32
+
+  ' 16-Channel Options
+  CFG_16CH_P0   = X_16P_2DAC8_WFWORD | X_WRITE_ON | 0  << 8 | 16
+  CFG_16CH_P8   = X_16P_2DAC8_WFWORD | X_WRITE_ON | 8  << 8 | 16
+  CFG_16CH_P16  = X_16P_2DAC8_WFWORD | X_WRITE_ON | 16 << 8 | 16
+  CFG_16CH_P24  = X_16P_2DAC8_WFWORD | X_WRITE_ON | 24 << 8 | 16
+  CFG_16CH_P32  = X_16P_2DAC8_WFWORD | X_WRITE_ON | 32 << 8 | 16
+  CFG_16CH_P40  = X_16P_2DAC8_WFWORD | X_WRITE_ON | 40 << 8 | 16
+  CFG_16CH_P48  = X_16P_2DAC8_WFWORD | X_WRITE_ON | 48 << 8 | 16
+  CFG_16CH_P56  = X_16P_2DAC8_WFWORD | X_WRITE_ON | 56 << 8 | 16
+
+  ' 8-Channel Options
+  CFG_8CH_P0    = X_8P_1DAC8_WFBYTE  | X_WRITE_ON | 0  << 8 | 8
+  CFG_8CH_P8    = X_8P_1DAC8_WFBYTE  | X_WRITE_ON | 8  << 8 | 8
+  CFG_8CH_P16   = X_8P_1DAC8_WFBYTE  | X_WRITE_ON | 16 << 8 | 8
+  CFG_8CH_P24   = X_8P_1DAC8_WFBYTE  | X_WRITE_ON | 24 << 8 | 8
+  CFG_8CH_P32   = X_8P_1DAC8_WFBYTE  | X_WRITE_ON | 32 << 8 | 8
+  CFG_8CH_P40   = X_8P_1DAC8_WFBYTE  | X_WRITE_ON | 40 << 8 | 8
+  CFG_8CH_P48   = X_8P_1DAC8_WFBYTE  | X_WRITE_ON | 48 << 8 | 8
+  CFG_8CH_P56   = X_8P_1DAC8_WFBYTE  | X_WRITE_ON | 56 << 8 | 8
+{
+  ' 4-Channel Base Pin Options
+  CFG_4CH_P0    = X_4P_4DAC1_WFBYTE  | X_WRITE_ON | 0  << 8 | 4
+
+
+  ' 1-Channel Base Pin Options
+  CFG_1CH_P0
+  CFG_1CH_P1
+  CFG_1CH_P2
+  CFG_1CH_P3
+  CFG_1CH_P4
+  CFG_1CH_P5
+  CFG_1CH_P6
+  CFG_1CH_P7
+  CFG_1CH_P8
+  CFG_1CH_P9
+  CFG_1CH_P10
+  CFG_1CH_P11
+  CFG_1CH_P12
+  CFG_1CH_P13
+  CFG_1CH_P14
+  CFG_1CH_P15
+  CFG_1CH_P16
+  CFG_1CH_P17
+  CFG_1CH_P18
+  CFG_1CH_P19
+  CFG_1CH_P20
+  CFG_1CH_P21
+  CFG_1CH_P22
+  CFG_1CH_P23
+  CFG_1CH_P24
+  CFG_1CH_P25
+  CFG_1CH_P26
+  CFG_1CH_P27
+  CFG_1CH_P28
+  CFG_1CH_P29
+  CFG_1CH_P30
+  CFG_1CH_P31
+  CFG_1CH_P32
+  CFG_1CH_P33
+  CFG_1CH_P34
+  CFG_1CH_P35
+  CFG_1CH_P36
+  CFG_1CH_P37
+  CFG_1CH_P38
+  CFG_1CH_P39
+  CFG_1CH_P40
+  CFG_1CH_P41
+  CFG_1CH_P42
+  CFG_1CH_P43
+  CFG_1CH_P44
+  CFG_1CH_P45
+  CFG_1CH_P46
+  CFG_1CH_P47
+  CFG_1CH_P48
+  CFG_1CH_P49
+  CFG_1CH_P50
+  CFG_1CH_P51
+  CFG_1CH_P52
+  CFG_1CH_P53
+  CFG_1CH_P54
+  CFG_1CH_P55
+  CFG_1CH_P56
+  CFG_1CH_P57
+  CFG_1CH_P58
+  CFG_1CH_P59
+  CFG_1CH_P60
+  CFG_1CH_P61
+  CFG_1CH_P62
+  CFG_1CH_P63
+}
+CON
+{{
+
+================================================================================
+  MIT License
+
+  Permission is hereby granted, free of charge, to any person obtaining a copy
+  of this software and associated documentation files (the "Software"), to deal
+  in the Software without restriction, including without limitation the rights
+  to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+  copies of the Software, and to permit persons to whom the Software is
+  furnished to do so, subject to the following conditions:
+
+  The above copyright notice and this permission notice shall be included in all
+  copies or substantial portions of the Software.
+
+  THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+  IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+  FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+  AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+  LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+  OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+  SOFTWARE.
+================================================================================
+}}
